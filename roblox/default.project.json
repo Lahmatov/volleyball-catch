@@ -2,14 +2,26 @@
   "name": "DinoEggCatch",
   "tree": {
     "$className": "DataModel",
-    "ServerScriptService": {
-      "DinoEggCatch": {
-        "$path": "src/DinoEggCatch.server.lua"
+    "ReplicatedStorage": {
+      "DinoShared": {
+        "$path": "src/shared"
       }
     },
-    "Players": {
+    "ServerScriptService": {
+      "DinoServer": {
+        "$path": "src/server"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "DinoClient": {
+          "$path": "src/client"
+        }
+      }
+    },
+    "Workspace": {
       "$properties": {
-        "CharacterAutoLoads": true
+        "Gravity": 196.2
       }
     }
   }
