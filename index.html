@@ -1,0 +1,439 @@
+<title>Dino Egg Catch</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik+Mono+One&family=Nunito:wght@600;800&display=swap">
+<style>
+  /* Layout: one screen — scoreboard strip on top, grass field canvas below, joystick-by-touch. Single "sunny field" look on purpose. */
+  :root {
+    --grass: #4f9a3c;
+    --grass-dark: #3f8430;
+    --chalk: #f7f3e3;
+    --ink: #1f2a17;
+    --dino: #d8452f;
+    --human: #2f6fd8;
+    --gold: #f2b822;
+    --display: "Rubik Mono One", "Arial Black", system-ui, sans-serif;
+    --body: "Nunito", system-ui, -apple-system, sans-serif;
+    color-scheme: light;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--grass-dark); color: var(--ink); font-family: var(--body);
+    display: flex; flex-direction: column; overflow: hidden; touch-action: none; user-select: none;
+  }
+  header {
+    display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between;
+    padding-block: 8px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    background: var(--chalk);
+  }
+  h1 { margin: 0; font-family: var(--display); font-size: clamp(14px, 2.4vw, 20px); font-weight: 400; letter-spacing: .02em; }
+  .score { display: flex; gap: 12px; align-items: center; font-weight: 800; font-size: 15px; font-variant-numeric: tabular-nums; }
+  .chip { padding: 3px 10px; border-radius: 999px; color: var(--chalk); }
+  .chip.h { background: var(--human); }
+  .chip.d { background: var(--dino); }
+  .time { min-width: 3.2em; text-align: center; }
+  main { flex: 1; position: relative; min-height: 0; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .overlay {
+    position: absolute; inset: 0; display: grid; place-items: center; padding: 16px;
+    background: color-mix(in srgb, var(--ink) 55%, transparent);
+  }
+  .card {
+    background: var(--chalk); border-radius: 18px; padding: 22px 24px; max-width: 30rem;
+    display: grid; gap: 12px; text-align: left; box-shadow: 0 10px 0 var(--ink);
+  }
+  .card h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 22px; text-wrap: balance; }
+  .card p, .card li { margin: 0; line-height: 1.45; font-size: 15px; }
+  .card ul { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
+  .cup { font-size: 64px; text-align: center; line-height: 1; }
+  button {
+    font: 800 17px var(--body); padding: 12px 18px; border: 0; border-radius: 12px; cursor: pointer;
+    background: var(--gold); color: var(--ink); box-shadow: 0 4px 0 var(--ink);
+  }
+  button:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+  button:focus-visible { outline: 3px solid var(--human); outline-offset: 3px; }
+</style>
+
+<header>
+  <h1>Dino Egg Catch</h1>
+  <div class="score">
+    <span class="chip h" id="hScore">Люди: 0 🥚</span>
+    <span class="time" id="time">2:00</span>
+    <span class="chip d" id="dScore">Динозавры: 0</span>
+  </div>
+</header>
+<main>
+  <canvas id="c"></canvas>
+  <div class="overlay" id="startScreen">
+    <div class="card">
+      <h2>Убеги от динозавров!</h2>
+      <ul>
+        <li>10 кругов, в каждом сидит динозавр: золотой, радужный, зелёный или красный.</li>
+        <li>Рядом с динозавром на полу лежат 5 яиц.</li>
+        <li>Забеги в круг, схвати яйцо и убеги из круга. Яйцо твоё!</li>
+        <li>В круге может быть только один человек. Если второй полезет, круг трескается и выталкивает его.</li>
+        <li>Если динозавр поймает человека, динозаврам 1 поинт.</li>
+        <li>Играют 5 человек, один тайм — 2 минуты. Кто наберёт больше, получает кубок 🏆</li>
+      </ul>
+      <p><b>Ты — синий человек.</b> Бегай стрелками / WASD или держи палец на поле.</p>
+      <button id="startBtn">Играть</button>
+    </div>
+  </div>
+  <div class="overlay" id="endScreen" hidden>
+    <div class="card">
+      <div class="cup">🏆</div>
+      <h2 id="endTitle"></h2>
+      <p id="endText"></p>
+      <button id="againBtn">Ещё раз</button>
+    </div>
+  </div>
+</main>
+
+<script>
+(() => {
+  const W = 1600, H = 900, R = 78, ZONE = R * 1.9, GAME_TIME = 120;
+  const HUMAN_SPEED = 190, CATCH = 34;
+  const DINO_TYPES = [
+    { kind: 'gold',    name: 'золотой', speed: 172 },
+    { kind: 'rainbow', name: 'радужный', speed: 165 },
+    { kind: 'green',   name: 'зелёный', speed: 145 },
+    { kind: 'red',     name: 'красный', speed: 158 },
+  ];
+  const HUMAN_COLORS = ['#2f6fd8', '#e07b1f', '#8a3fd1', '#1fa39a', '#d03f8f'];
+  const HUMAN_NAMES = ['Ты', 'Аня', 'Миша', 'Лиза', 'Петя'];
+
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const $ = id => document.getElementById(id);
+  let scale = 1, offX = 0, offY = 0;
+
+  function resize() {
+    const r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    canvas.width = r.width * dpr; canvas.height = r.height * dpr;
+    scale = Math.min(r.width / W, r.height / H);
+    offX = (r.width - W * scale) / 2; offY = (r.height - H * scale) / 2;
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, dpr * offY);
+  }
+  addEventListener('resize', resize);
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  let circles, humans, state, time, hPoints, dPoints, lastT, floaters;
+
+  function setup() {
+    circles = []; humans = []; floaters = [];
+    const cols = 5, xs = W / cols;
+    for (let i = 0; i < 10; i++) {
+      const col = i % cols, row = Math.floor(i / cols);
+      const cx = xs * (col + .5) + (row ? 40 : -40), cy = row ? 640 : 250;
+      const type = DINO_TYPES[i % 4];
+      const eggs = [];
+      for (let e = 0; e < 5; e++) {
+        const a = -Math.PI / 2 + e * (Math.PI * 2 / 5);
+        eggs.push({ x: cx + Math.cos(a) * R * .62, y: cy + Math.sin(a) * R * .62, taken: false, respawn: 0 });
+      }
+      circles.push({
+        x: cx, y: cy, type, eggs, crack: 0,
+        dino: { x: cx, y: cy, face: 1, step: rand(0, 6) },
+      });
+    }
+    for (let i = 0; i < 5; i++) {
+      humans.push({
+        id: i, x: 160 + i * 320, y: 450 + (i % 2 ? 30 : -30), color: HUMAN_COLORS[i], name: HUMAN_NAMES[i],
+        bot: i > 0, egg: null, inside: null, stun: 0, step: 0, target: null, think: 0,
+      });
+    }
+    time = GAME_TIME; hPoints = 0; dPoints = 0;
+    updateHud();
+  }
+
+  // ---------- input ----------
+  const keys = {};
+  addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if (e.key.startsWith('Arrow')) e.preventDefault(); });
+  addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+  let pointer = null;
+  const toWorld = e => {
+    const r = canvas.getBoundingClientRect();
+    return { x: (e.clientX - r.left - offX) / scale, y: (e.clientY - r.top - offY) / scale };
+  };
+  canvas.addEventListener('pointerdown', e => { pointer = toWorld(e); canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener('pointermove', e => { if (pointer) pointer = toWorld(e); });
+  const up = () => { pointer = null; };
+  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+
+  function playerDir(p) {
+    let dx = (keys['arrowright'] || keys['d'] ? 1 : 0) - (keys['arrowleft'] || keys['a'] ? 1 : 0);
+    let dy = (keys['arrowdown'] || keys['s'] ? 1 : 0) - (keys['arrowup'] || keys['w'] ? 1 : 0);
+    if (!dx && !dy && pointer) {
+      dx = pointer.x - p.x; dy = pointer.y - p.y;
+      if (Math.hypot(dx, dy) < 8) return { x: 0, y: 0 };
+    }
+    const l = Math.hypot(dx, dy) || 1;
+    return { x: dx / l, y: dy / l };
+  }
+
+  // ---------- bots ----------
+  function botDir(h, dt) {
+    if (h.egg) {
+      // run straight away from the dino of that circle
+      const c = h.egg.circle, d = c.dino;
+      let dx = h.x - d.x, dy = h.y - d.y;
+      const l = Math.hypot(dx, dy) || 1;
+      return { x: dx / l, y: dy / l };
+    }
+    h.think -= dt;
+    if (!h.target || h.think <= 0 || h.target.taken) {
+      h.think = rand(1.5, 3);
+      // choose a free egg in a circle without another human
+      const options = [];
+      for (const c of circles) {
+        if (humans.some(o => o !== h && o.inside === c)) continue;
+        for (const e of c.eggs) if (!e.taken) options.push({ e, c, d: dist(h, e) + rand(0, 400) });
+      }
+      options.sort((a, b) => a.d - b.d);
+      h.target = options[0] ? options[0].e : null;
+      h.targetCircle = options[0] ? options[0].c : null;
+      h.wait = Math.random() < .5 ? rand(.3, 1.5) : 0;
+    }
+    if (!h.target) return { x: 0, y: 0 };
+    const c = h.targetCircle;
+    // wait at the edge until the dino looks away a bit
+    if (h.wait > 0 && dist(h, c) < ZONE + 20 && dist(h, c) > R + 10) { h.wait -= dt; return { x: 0, y: 0 }; }
+    if (humans.some(o => o !== h && o.inside === c)) { h.target = null; return { x: 0, y: 0 }; }
+    let dx = h.target.x - h.x, dy = h.target.y - h.y;
+    const l = Math.hypot(dx, dy) || 1;
+    return { x: dx / l, y: dy / l };
+  }
+
+  // ---------- update ----------
+  function popText(x, y, text, color) { floaters.push({ x, y, text, color, life: 1.3 }); }
+
+  function update(dt) {
+    time -= dt;
+    if (time <= 0) { time = 0; return finish(); }
+
+    for (const c of circles) {
+      c.crack = Math.max(0, c.crack - dt);
+      for (const e of c.eggs) if (e.taken === 'gone') { e.respawn -= dt; if (e.respawn <= 0) e.taken = false; }
+    }
+
+    for (const h of humans) {
+      h.step += dt;
+      if (h.stun > 0) { h.stun -= dt; continue; }
+      const dir = h.bot ? botDir(h, dt) : playerDir(h);
+      const sp = HUMAN_SPEED * (h.bot ? .86 : 1) * (h.egg ? .92 : 1);
+      let nx = h.x + dir.x * sp * dt, ny = h.y + dir.y * sp * dt;
+      nx = Math.max(20, Math.min(W - 20, nx)); ny = Math.max(20, Math.min(H - 20, ny));
+
+      // only one human inside a circle
+      for (const c of circles) {
+        const inNow = Math.hypot(nx - c.x, ny - c.y) < R;
+        if (inNow && h.inside !== c && humans.some(o => o !== h && o.inside === c)) {
+          const a = Math.atan2(ny - c.y, nx - c.x);
+          nx = c.x + Math.cos(a) * (R + 14); ny = c.y + Math.sin(a) * (R + 14);
+          if (c.crack <= 0) popText(c.x, c.y - R - 20, 'Круг сломан! Тут уже занято', '#f7f3e3');
+          c.crack = 1;
+        }
+      }
+      h.x = nx; h.y = ny;
+      h.inside = circles.find(c => Math.hypot(h.x - c.x, h.y - c.y) < R) || null;
+
+      // grab egg
+      if (!h.egg && h.inside) {
+        for (const e of h.inside.eggs) {
+          if (!e.taken && Math.hypot(h.x - e.x, h.y - e.y) < 26) { e.taken = true; h.egg = { egg: e, circle: h.inside }; break; }
+        }
+      }
+      // escape with egg
+      if (h.egg && dist(h, h.egg.circle) > ZONE + 6) {
+        h.egg.egg.taken = 'gone'; h.egg.egg.respawn = 10;
+        h.egg = null; hPoints++; h.target = null;
+        popText(h.x, h.y - 30, '+1 🥚', '#fff6c8');
+        updateHud();
+      }
+    }
+
+    for (const c of circles) {
+      const d = c.dino;
+      d.step += dt;
+      // who does this dino chase? the egg thief first, then anyone inside the circle
+      let prey = humans.find(h => h.stun <= 0 && h.egg && h.egg.circle === c) ||
+                 humans.find(h => h.stun <= 0 && h.inside === c);
+      let tx = c.x, ty = c.y, sp = c.type.speed;
+      if (prey) { tx = prey.x; ty = prey.y; } else sp *= .6;
+      let dx = tx - d.x, dy = ty - d.y;
+      const l = Math.hypot(dx, dy);
+      if (l > 2) {
+        const m = Math.min(l, sp * dt);
+        d.x += dx / l * m; d.y += dy / l * m;
+        if (Math.abs(dx) > 1) d.face = dx > 0 ? 1 : -1;
+      }
+      // dino stays near its circle
+      const hl = Math.hypot(d.x - c.x, d.y - c.y);
+      if (hl > ZONE) { d.x = c.x + (d.x - c.x) / hl * ZONE; d.y = c.y + (d.y - c.y) / hl * ZONE; }
+
+      if (prey && dist(prey, d) < CATCH) {
+        dPoints++;
+        if (prey.egg) { prey.egg.egg.taken = false; prey.egg = null; }
+        prey.stun = 1.4;
+        const a = Math.atan2(prey.y - c.y, prey.x - c.x);
+        prey.x = c.x + Math.cos(a) * (ZONE + 40); prey.y = c.y + Math.sin(a) * (ZONE + 40);
+        prey.x = Math.max(20, Math.min(W - 20, prey.x)); prey.y = Math.max(20, Math.min(H - 20, prey.y));
+        prey.inside = null; prey.target = null;
+        popText(d.x, d.y - 50, `Поймал ${prey.name === 'Ты' ? 'тебя' : prey.name}! +1`, '#ffd0c4');
+        updateHud();
+      }
+    }
+
+    for (const f of floaters) { f.life -= dt; f.y -= 30 * dt; }
+    floaters = floaters.filter(f => f.life > 0);
+    updateHud(true);
+  }
+
+  function updateHud(onlyTime) {
+    const s = Math.ceil(time);
+    $('time').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    if (onlyTime) return;
+    $('hScore').textContent = `Люди: ${hPoints} 🥚`;
+    $('dScore').textContent = `Динозавры: ${dPoints}`;
+  }
+
+  function finish() {
+    state = 'end';
+    let title, text;
+    if (dPoints > hPoints) { title = 'Кубок у динозавров!'; text = `Динозавры поймали людей ${dPoints} раз, а люди унесли ${hPoints} яиц.`; }
+    else if (hPoints > dPoints) { title = 'Кубок у людей!'; text = `Люди унесли ${hPoints} яиц, а динозавры поймали только ${dPoints} раз.`; }
+    else { title = 'Ничья!'; text = `По ${hPoints} очков. Кубок делим пополам.`; }
+    $('endTitle').textContent = title; $('endText').textContent = text;
+    $('endScreen').hidden = false;
+  }
+
+  // ---------- drawing ----------
+  function drawField() {
+    ctx.fillStyle = '#4f9a3c'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#56a342';
+    for (let x = 0; x < W; x += 160) ctx.fillRect(x, 0, 80, H);
+    ctx.strokeStyle = 'rgba(247,243,227,.5)'; ctx.lineWidth = 4;
+    ctx.strokeRect(10, 10, W - 20, H - 20);
+  }
+
+  function dinoColor(c, t, part) {
+    switch (c.type.kind) {
+      case 'gold': return part ? '#b9860c' : '#f2c230';
+      case 'green': return part ? '#2c6b1e' : '#6ccf45';
+      case 'red': return part ? '#8c2416' : '#e2513a';
+      case 'rainbow': return `hsl(${(t * 90 + c.x) % 360} 85% ${part ? 40 : 60}%)`;
+    }
+  }
+
+  function drawCircle(c, t) {
+    const busy = humans.some(h => h.inside === c);
+    ctx.save();
+    ctx.setLineDash([2, 10]); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(247,243,227,.35)';
+    ctx.beginPath(); ctx.arc(c.x, c.y, ZONE, 0, 7); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = busy ? 'rgba(216,69,47,.18)' : 'rgba(31,42,23,.12)';
+    ctx.beginPath(); ctx.arc(c.x, c.y, R, 0, 7); ctx.fill();
+    ctx.lineWidth = 6; ctx.strokeStyle = '#f7f3e3';
+    if (c.crack > 0) {
+      // broken circle: chalk ring in pieces, shaking
+      const sh = Math.sin(t * 60) * 3 * c.crack;
+      for (let i = 0; i < 8; i++) {
+        ctx.beginPath(); ctx.arc(c.x + sh, c.y, R, i * Math.PI / 4 + .12, (i + 1) * Math.PI / 4 - .12); ctx.stroke();
+      }
+    } else { ctx.beginPath(); ctx.arc(c.x, c.y, R, 0, 7); ctx.stroke(); }
+    for (const e of c.eggs) if (!e.taken) drawEgg(e.x, e.y, c.type.kind === 'gold');
+    ctx.restore();
+  }
+
+  function drawEgg(x, y, gold) {
+    ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.beginPath(); ctx.ellipse(x, y + 10, 10, 4, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = gold ? '#ffd84a' : '#fbf6e6'; ctx.strokeStyle = '#1f2a17'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(x, y, 9, 12, 0, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = gold ? '#c99700' : '#9cbf7a';
+    ctx.beginPath(); ctx.arc(x - 3, y - 3, 2, 0, 7); ctx.arc(x + 3, y + 3, 1.6, 0, 7); ctx.fill();
+  }
+
+  function drawDino(c, t) {
+    const d = c.dino, f = d.face, bob = Math.sin(d.step * 10) * 2;
+    const body = dinoColor(c, t, 0), dark = dinoColor(c, t, 1);
+    ctx.save(); ctx.translate(d.x, d.y + bob); ctx.scale(f, 1);
+    ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(0, 30 - bob, 34, 8, 0, 0, 7); ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = '#1f2a17';
+    // tail
+    ctx.fillStyle = body; ctx.beginPath(); ctx.moveTo(-18, 0); ctx.quadraticCurveTo(-48, 0, -54, 18); ctx.quadraticCurveTo(-36, 14, -14, 14); ctx.closePath(); ctx.fill(); ctx.stroke();
+    // legs
+    const leg = Math.sin(d.step * 10) * 5;
+    ctx.fillStyle = dark;
+    ctx.fillRect(-12 + leg, 12, 9, 18); ctx.strokeRect(-12 + leg, 12, 9, 18);
+    ctx.fillRect(6 - leg, 12, 9, 18); ctx.strokeRect(6 - leg, 12, 9, 18);
+    // spikes
+    ctx.fillStyle = dark;
+    for (let i = 0; i < 4; i++) { const sx = -16 + i * 9; ctx.beginPath(); ctx.moveTo(sx, -14); ctx.lineTo(sx + 5, -26); ctx.lineTo(sx + 10, -14); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    // body
+    ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(0, 0, 26, 18, 0, 0, 7); ctx.fill(); ctx.stroke();
+    // head
+    ctx.beginPath(); ctx.ellipse(26, -16, 17, 13, -.2, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(30, -21, 4.5, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#1f2a17'; ctx.beginPath(); ctx.arc(31.5, -21, 2, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(30, -10); ctx.lineTo(41, -12); ctx.stroke();
+    if (c.type.kind === 'gold') { ctx.fillStyle = '#fff6c8'; ctx.beginPath(); ctx.arc(-6, -4, 3, 0, 7); ctx.fill(); }
+    ctx.restore();
+  }
+
+  function drawHuman(h) {
+    const run = Math.sin(h.step * 14) * 6;
+    ctx.save(); ctx.translate(h.x, h.y);
+    if (h.stun > 0) ctx.globalAlpha = .5 + .5 * Math.abs(Math.sin(h.stun * 12));
+    ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(0, 22, 14, 5, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#1f2a17'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(-6 + run, 20); ctx.moveTo(0, 6); ctx.lineTo(6 - run, 20); ctx.stroke();
+    ctx.fillStyle = h.color; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.roundRect(-10, -12, 20, 22, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#f2c9a0'; ctx.beginPath(); ctx.arc(0, -20, 9, 0, 7); ctx.fill(); ctx.stroke();
+    if (h.egg) drawEgg(12, -6, h.egg.circle.type.kind === 'gold');
+    ctx.globalAlpha = 1;
+    ctx.font = '800 15px Nunito, system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.lineWidth = 4; ctx.strokeStyle = '#1f2a17'; ctx.fillStyle = '#f7f3e3';
+    ctx.strokeText(h.name, 0, -36); ctx.fillText(h.name, 0, -36);
+    if (!h.bot) { ctx.strokeStyle = '#f2b822'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, -4, 26, 0, 7); ctx.stroke(); }
+    ctx.restore();
+  }
+
+  function draw(t) {
+    const r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#3f8430'; ctx.fillRect(0, 0, r.width * dpr, r.height * dpr); ctx.restore();
+    drawField();
+    for (const c of circles) drawCircle(c, t);
+    const actors = [...circles.map(c => ({ y: c.dino.y, f: () => drawDino(c, t) })), ...humans.map(h => ({ y: h.y, f: () => drawHuman(h) }))];
+    actors.sort((a, b) => a.y - b.y).forEach(a => a.f());
+    ctx.textAlign = 'center'; ctx.font = '800 22px Nunito, system-ui, sans-serif';
+    for (const f of floaters) {
+      ctx.globalAlpha = Math.min(1, f.life * 2);
+      ctx.lineWidth = 5; ctx.strokeStyle = '#1f2a17'; ctx.strokeText(f.text, f.x, f.y);
+      ctx.fillStyle = f.color; ctx.fillText(f.text, f.x, f.y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function loop(now) {
+    const t = now / 1000;
+    const dt = Math.min(.05, t - (lastT ?? t)); lastT = t;
+    if (state === 'play') update(dt);
+    draw(t);
+    requestAnimationFrame(loop);
+  }
+
+  function start() {
+    setup(); state = 'play';
+    $('startScreen').hidden = true; $('endScreen').hidden = true;
+  }
+  $('startBtn').onclick = start;
+  $('againBtn').onclick = start;
+
+  resize(); setup(); state = 'menu';
+  requestAnimationFrame(loop);
+})();
+</script>
