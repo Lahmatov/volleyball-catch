@@ -18,6 +18,7 @@ local Looks = require(script.Parent.Looks)
 local Progress = require(script.Parent.Progress)
 local Lobby = require(script.Parent.Lobby)
 local Graphics = require(script.Parent.Graphics)
+local AntiCheat = require(script.Parent.AntiCheat)
 
 local R, ZONE, G = Config.CIRCLE_RADIUS, Config.ZONE_RADIUS, Config.GROUND_Y
 local FX, FZ = Config.FIELD_X, Config.FIELD_Z
@@ -80,6 +81,11 @@ local function newState()
 		fartAt = 0,
 		mushroomAt = 0,
 		scaleUntil = 0,
+		track = {}, -- последняя честная точка (защита от телепорта)
+		peakSpeed = Config.WALK_SPEED,
+		peakUntil = 0,
+		bucket = {}, -- сколько запросов можно прямо сейчас
+		cheatToastAt = 0,
 	}
 end
 
@@ -120,6 +126,10 @@ end
 local function teleport(player: Player, cf: CFrame)
 	local char = player.Character
 	if char then
+		local s = states[player]
+		if s then
+			AntiCheat.trust(s.track, os.clock())
+		end
 		char:PivotTo(cf)
 		local root = char:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if root then
@@ -136,6 +146,10 @@ local function moveOut(root: BasePart, from: Vector3, radius: number)
 	dir = dir.Unit
 	local x = math.clamp(from.X + dir.X * radius, -FX / 2 + 4, FX / 2 - 4)
 	local z = math.clamp(from.Z + dir.Z * radius, -FZ / 2 + 4, FZ / 2 - 4)
+	local player = Players:GetPlayerFromCharacter(root.Parent)
+	if player and states[player] then
+		AntiCheat.trust(states[player].track, os.clock())
+	end
 	root.CFrame = CFrame.new(x, root.Position.Y, z) * root.CFrame.Rotation
 	root.AssemblyLinearVelocity = Vector3.zero
 end
@@ -349,6 +363,12 @@ local function applyMovement(player: Player, s, hum: Humanoid, now: number)
 			speed -= 1
 		end
 	end
+	-- самая большая скорость за последнюю секунду: по ней сервер проверяет, не читер ли
+	if speed >= s.peakSpeed then
+		s.peakSpeed, s.peakUntil = speed, now + 1
+	elseif now > s.peakUntil then
+		s.peakSpeed = speed
+	end
 	if hum.WalkSpeed ~= speed then
 		hum.WalkSpeed = speed
 	end
@@ -510,6 +530,21 @@ RunService.Heartbeat:Connect(function(dt)
 			roots[player] = root
 			local pos = root.Position
 
+			-- телепорт, ускорение или побег из клетки: возвращаем на последнюю честную точку
+			local caged = s.cagedUntil > now
+			local park = Lobby.contains(pos) or pos.X < -FX / 2 - 10 -- горка и батуты разгоняют сильнее
+			local limit = caged and 0 or (park and 70 or s.peakSpeed * 1.25)
+			if not AntiCheat.check(s.track, pos, now, limit, caged and 1.5 or nil) then
+				dropEgg(player)
+				root.CFrame = CFrame.new(s.track.pos) * root.CFrame.Rotation
+				root.AssemblyLinearVelocity = Vector3.zero
+				pos = s.track.pos
+				if now - s.cheatToastAt > 5 then
+					s.cheatToastAt = now
+					Net.toast(player, "🚫 Так быстро нельзя! Возвращаем назад")
+				end
+			end
+
 			if pos.Y < -40 then
 				dropEgg(player) -- иначе телепорт в центр поля засчитал бы яйцо как унесённое
 				teleport(player, (roundActive and not Lobby.contains(pos)) and lobby.fieldCFrame or lobby.spawnCFrame)
@@ -666,6 +701,9 @@ RunService.Heartbeat:Connect(function(dt)
 		local chasing = prey ~= nil
 		if chasing and not c.chasing then
 			Net.sound(prey, "roar")
+			c.noticeUntil = now + Config.DINO_REACTION
+			c.bubble.Text = "❗"
+			c.chatUntil = now + Config.DINO_REACTION
 		end
 		c.chasing = chasing
 
@@ -687,6 +725,9 @@ RunService.Heartbeat:Connect(function(dt)
 		end
 		if c.dashUntil > now then
 			speed *= 2.2
+		end
+		if (c.noticeUntil or 0) > now then
+			speed = 0 -- ещё удивляется
 		end
 		local moving = delta.Magnitude > 0.2
 		if moving then
@@ -812,6 +853,7 @@ local function onCharacter(player: Player, char: Model)
 		releaseCage(player)
 	end)
 	local s = st(player)
+	AntiCheat.trust(s.track, os.clock())
 	if s.isDino then
 		Looks.morphDino(char, s.dinoKind)
 	else
@@ -934,6 +976,9 @@ Net.Request.OnServerInvoke = function(player: Player, action: any, arg: any)
 		return { ok = false }
 	end
 	local now = os.clock()
+	if not AntiCheat.allow(s.bucket, now, 8, 15) then
+		return { ok = false, busy = true } -- чит-скрипт жмёт кнопки сотни раз в секунду
+	end
 	if action == "roar" then
 		if not (s.isDino and roundActive) then
 			return { ok = false }

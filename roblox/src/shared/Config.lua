@@ -7,6 +7,7 @@ Config.MAX_PLAYERS = 5
 Config.CIRCLE_RADIUS = 14
 Config.ZONE_RADIUS = 26 -- убежал за эту границу с яйцом — яйцо твоё
 Config.CATCH_DISTANCE = 5
+Config.DINO_REACTION = 0.8 -- динозавр сначала удивляется «❗», потом бежит
 Config.EGG_RESPAWN = 10
 Config.CAGE_TIME = 8 -- сколько сидишь в клетке, если друг не спас
 Config.WALK_SPEED = 16

@@ -1,6 +1,7 @@
 -- Тесты Roblox-логики. Запуск из корня репозитория: lune run tests/roblox/run
 local process = require("@lune/process")
 local Enum = require("@lune/roblox").Enum
+local Vector3 = require("@lune/roblox").Vector3
 local H = require("./harness")
 
 local passed, failed = 0, 0
@@ -210,6 +211,49 @@ test("T15 Смена карт не портит горы и вулкан", funct
 		eq(f.material, capMaterial, "материал вершины горы после Лёд → Вулкан → Поле")
 	end
 	eq(volcano[#volcano].material, volcanoTop, "материал верхушки вулкана после Лёд → Вулкан → Поле")
+end)
+
+test("T16 Защита: честная ходьба и бег проходят проверку", function()
+	H.fresh()
+	local AC = H.load("AntiCheat")
+	local anchor = {}
+	local pos = Vector3.new(0, 3, 0)
+	for i = 0, 100 do -- 5 секунд бегом 16 шагов/с с рывками сети
+		local t = i * 0.05
+		pos = Vector3.new(16 * t + (i % 3) * 0.5, 3, 0)
+		eq(AC.check(anchor, pos, t, 16 * 1.25), true, "шаг " .. i)
+	end
+end)
+
+test("T17 Защита: телепорт отклонён, после переноса сервером снова верим", function()
+	H.fresh()
+	local AC = H.load("AntiCheat")
+	local anchor = {}
+	AC.check(anchor, Vector3.new(0, 3, 0), 0, 20)
+	eq(AC.check(anchor, Vector3.new(30, 3, 0), 0.05, 20), false, "прыжок на 30 шагов за 0.05 с")
+	eq(anchor.pos, Vector3.new(0, 3, 0), "честная точка осталась прежней")
+	AC.trust(anchor, 0.1)
+	eq(AC.check(anchor, Vector3.new(200, 3, 0), 0.15, 20), true, "перенос сервером")
+	eq(AC.check(anchor, Vector3.new(200, 3, 0), 1.5, 20), true, "стоит на новом месте")
+	eq(AC.check(anchor, Vector3.new(260, 3, 0), 1.6, 20), false, "новый телепорт после доверия")
+end)
+
+test("T18 Защита: в клетке не уйти, спам кнопками отсекается", function()
+	H.fresh()
+	local AC = H.load("AntiCheat")
+	local anchor = {}
+	AC.check(anchor, Vector3.new(0, 3, 0), 0, 0, 1.5)
+	eq(AC.check(anchor, Vector3.new(1, 3, 0), 0.5, 0, 1.5), true, "покачаться на месте")
+	eq(AC.check(anchor, Vector3.new(4, 3, 0), 1, 0, 1.5), false, "уйти из клетки на 4 шага")
+	local bucket, ok = {}, 0
+	for _ = 1, 50 do
+		if AC.allow(bucket, 10, 8, 15) then
+			ok += 1
+		end
+	end
+	eq(ok, 15, "запросов сразу")
+	eq(AC.allow(bucket, 10.1, 8, 15), false, "через 0.1 с жетона ещё нет")
+	eq(AC.allow(bucket, 10.2, 8, 15), true, "через 0.2 с один жетон есть")
 end)
 
 print(string.format("\n%d passed, %d failed", passed, failed))

@@ -25,6 +25,7 @@ Config.MAX_PLAYERS = 5
 Config.CIRCLE_RADIUS = 14
 Config.ZONE_RADIUS = 26 -- убежал за эту границу с яйцом — яйцо твоё
 Config.CATCH_DISTANCE = 5
+Config.DINO_REACTION = 0.8 -- динозавр сначала удивляется «❗», потом бежит
 Config.EGG_RESPAWN = 10
 Config.CAGE_TIME = 8 -- сколько сидишь в клетке, если друг не спас
 Config.WALK_SPEED = 16
@@ -210,6 +211,57 @@ return Config
         <string name="Name">DinoServer</string>
       </Properties>
       <Item class="ModuleScript" referent="6">
+        <Properties>
+          <string name="Name">AntiCheat</string>
+          <string name="Source"><![CDATA[-- Защита от читов. Сервер не верит игроку на слово:
+--  * check: игрок не может двигаться быстрее, чем ему разрешено (телепорт, ускорение, побег из клетки);
+--  * allow: не больше N запросов в секунду (спам кнопками из чит-скрипта).
+local AntiCheat = {}
+
+AntiCheat.WINDOW = 0.5 -- секунд: точку отсчёта обновляем не чаще, чтобы мелкие шаги не складывались в телепорт
+AntiCheat.SLACK = 4 -- запас в шагах (studs) на рывки сети
+
+-- anchor = { pos, t } — последняя честная точка. Вернёт false, если игрок ушёл слишком далеко.
+function AntiCheat.check(anchor, pos: Vector3, now: number, maxSpeed: number, slack: number?): boolean
+	if not anchor.pos or (anchor.graceUntil and now < anchor.graceUntil) then
+		anchor.pos, anchor.t = pos, now
+		return true
+	end
+	local d = Vector3.new(pos.X - anchor.pos.X, 0, pos.Z - anchor.pos.Z).Magnitude
+	if d > maxSpeed * (now - anchor.t) + (slack or AntiCheat.SLACK) then
+		anchor.t = now -- вернём игрока в anchor.pos и начнём отсчёт заново
+		return false
+	end
+	if now - anchor.t >= AntiCheat.WINDOW then
+		anchor.pos, anchor.t = pos, now
+	end
+	return true
+end
+
+-- сервер сам переносит игрока: секунду верим любой точке (пока новая позиция доходит до игрока и обратно)
+function AntiCheat.trust(anchor, now: number)
+	anchor.pos = nil
+	anchor.graceUntil = now + 1
+end
+
+-- ведро с жетонами: perSecond жетонов в секунду, не больше burst сразу
+function AntiCheat.allow(bucket, now: number, perSecond: number, burst: number): boolean
+	local tokens = bucket.tokens or burst
+	tokens = math.min(burst, tokens + (now - (bucket.t or now)) * perSecond)
+	bucket.t = now
+	if tokens < 1 then
+		bucket.tokens = tokens
+		return false
+	end
+	bucket.tokens = tokens - 1
+	return true
+end
+
+return AntiCheat
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="7">
         <Properties>
           <string name="Name">Arena</string>
           <string name="Source"><![CDATA[-- Строит поле на каждый тайм: 4 карты, круги из камней, гнёзда, флажки, динозавры, яйца, кусты и украшения.
@@ -528,7 +580,7 @@ return Arena
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="7">
+      <Item class="ModuleScript" referent="8">
         <Properties>
           <string name="Name">Data</string>
           <string name="Source"><![CDATA[-- Сохранение монеток, питомцев, костюмов и значков.
@@ -654,7 +706,7 @@ return Data
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="8">
+      <Item class="ModuleScript" referent="9">
         <Properties>
           <string name="Name">Graphics</string>
           <string name="Source"><![CDATA[-- Красота: свет, атмосфера, облака, ландшафт (холмы, горы, озёра, вулкан) и погода на каждой карте.
@@ -918,7 +970,7 @@ return Graphics
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="9">
+      <Item class="ModuleScript" referent="10">
         <Properties>
           <string name="Name">Lobby</string>
           <string name="Source"><![CDATA[-- Комната ожидания «Динопарк»: батуты, горка, бассейн с шариками, грибы-великаны,
@@ -1251,7 +1303,7 @@ return Lobby
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="10">
+      <Item class="ModuleScript" referent="11">
         <Properties>
           <string name="Name">Looks</string>
           <string name="Source"><![CDATA[-- Шапки, рюкзак, следы, питомцы и превращение игрока в динозавра.
@@ -1501,7 +1553,7 @@ return Looks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="11">
+      <Item class="Script" referent="12">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -1525,6 +1577,7 @@ local Looks = require(script.Parent.Looks)
 local Progress = require(script.Parent.Progress)
 local Lobby = require(script.Parent.Lobby)
 local Graphics = require(script.Parent.Graphics)
+local AntiCheat = require(script.Parent.AntiCheat)
 
 local R, ZONE, G = Config.CIRCLE_RADIUS, Config.ZONE_RADIUS, Config.GROUND_Y
 local FX, FZ = Config.FIELD_X, Config.FIELD_Z
@@ -1587,6 +1640,11 @@ local function newState()
 		fartAt = 0,
 		mushroomAt = 0,
 		scaleUntil = 0,
+		track = {}, -- последняя честная точка (защита от телепорта)
+		peakSpeed = Config.WALK_SPEED,
+		peakUntil = 0,
+		bucket = {}, -- сколько запросов можно прямо сейчас
+		cheatToastAt = 0,
 	}
 end
 
@@ -1627,6 +1685,10 @@ end
 local function teleport(player: Player, cf: CFrame)
 	local char = player.Character
 	if char then
+		local s = states[player]
+		if s then
+			AntiCheat.trust(s.track, os.clock())
+		end
 		char:PivotTo(cf)
 		local root = char:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if root then
@@ -1643,6 +1705,10 @@ local function moveOut(root: BasePart, from: Vector3, radius: number)
 	dir = dir.Unit
 	local x = math.clamp(from.X + dir.X * radius, -FX / 2 + 4, FX / 2 - 4)
 	local z = math.clamp(from.Z + dir.Z * radius, -FZ / 2 + 4, FZ / 2 - 4)
+	local player = Players:GetPlayerFromCharacter(root.Parent)
+	if player and states[player] then
+		AntiCheat.trust(states[player].track, os.clock())
+	end
 	root.CFrame = CFrame.new(x, root.Position.Y, z) * root.CFrame.Rotation
 	root.AssemblyLinearVelocity = Vector3.zero
 end
@@ -1856,6 +1922,12 @@ local function applyMovement(player: Player, s, hum: Humanoid, now: number)
 			speed -= 1
 		end
 	end
+	-- самая большая скорость за последнюю секунду: по ней сервер проверяет, не читер ли
+	if speed >= s.peakSpeed then
+		s.peakSpeed, s.peakUntil = speed, now + 1
+	elseif now > s.peakUntil then
+		s.peakSpeed = speed
+	end
 	if hum.WalkSpeed ~= speed then
 		hum.WalkSpeed = speed
 	end
@@ -2017,6 +2089,21 @@ RunService.Heartbeat:Connect(function(dt)
 			roots[player] = root
 			local pos = root.Position
 
+			-- телепорт, ускорение или побег из клетки: возвращаем на последнюю честную точку
+			local caged = s.cagedUntil > now
+			local park = Lobby.contains(pos) or pos.X < -FX / 2 - 10 -- горка и батуты разгоняют сильнее
+			local limit = caged and 0 or (park and 70 or s.peakSpeed * 1.25)
+			if not AntiCheat.check(s.track, pos, now, limit, caged and 1.5 or nil) then
+				dropEgg(player)
+				root.CFrame = CFrame.new(s.track.pos) * root.CFrame.Rotation
+				root.AssemblyLinearVelocity = Vector3.zero
+				pos = s.track.pos
+				if now - s.cheatToastAt > 5 then
+					s.cheatToastAt = now
+					Net.toast(player, "🚫 Так быстро нельзя! Возвращаем назад")
+				end
+			end
+
 			if pos.Y < -40 then
 				dropEgg(player) -- иначе телепорт в центр поля засчитал бы яйцо как унесённое
 				teleport(player, (roundActive and not Lobby.contains(pos)) and lobby.fieldCFrame or lobby.spawnCFrame)
@@ -2173,6 +2260,9 @@ RunService.Heartbeat:Connect(function(dt)
 		local chasing = prey ~= nil
 		if chasing and not c.chasing then
 			Net.sound(prey, "roar")
+			c.noticeUntil = now + Config.DINO_REACTION
+			c.bubble.Text = "❗"
+			c.chatUntil = now + Config.DINO_REACTION
 		end
 		c.chasing = chasing
 
@@ -2194,6 +2284,9 @@ RunService.Heartbeat:Connect(function(dt)
 		end
 		if c.dashUntil > now then
 			speed *= 2.2
+		end
+		if (c.noticeUntil or 0) > now then
+			speed = 0 -- ещё удивляется
 		end
 		local moving = delta.Magnitude > 0.2
 		if moving then
@@ -2319,6 +2412,7 @@ local function onCharacter(player: Player, char: Model)
 		releaseCage(player)
 	end)
 	local s = st(player)
+	AntiCheat.trust(s.track, os.clock())
 	if s.isDino then
 		Looks.morphDino(char, s.dinoKind)
 	else
@@ -2441,6 +2535,9 @@ Net.Request.OnServerInvoke = function(player: Player, action: any, arg: any)
 		return { ok = false }
 	end
 	local now = os.clock()
+	if not AntiCheat.allow(s.bucket, now, 8, 15) then
+		return { ok = false, busy = true } -- чит-скрипт жмёт кнопки сотни раз в секунду
+	end
 	if action == "roar" then
 		if not (s.isDino and roundActive) then
 			return { ok = false }
@@ -2716,7 +2813,7 @@ end)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="12">
+      <Item class="ModuleScript" referent="13">
         <Properties>
           <string name="Name">Models</string>
           <string name="Source"><![CDATA[-- Все модели собираются из простых деталей, поэтому игре не нужны чужие ассеты.
@@ -3504,7 +3601,7 @@ return Models
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">Net</string>
           <string name="Source"><![CDATA[-- Связь сервера с экраном игрока.
@@ -3564,7 +3661,7 @@ return Net
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">Progress</string>
           <string name="Source"><![CDATA[-- Монетки, яйца, питомцы, магазин, подарки, колесо удачи, коды и значки.
@@ -3950,19 +4047,19 @@ return Progress
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="15">
+  <Item class="StarterPlayer" referent="16">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="16">
+    <Item class="StarterPlayerScripts" referent="17">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="17">
+      <Item class="Folder" referent="18">
         <Properties>
           <string name="Name">DinoClient</string>
         </Properties>
-        <Item class="LocalScript" referent="18">
+        <Item class="LocalScript" referent="19">
           <Properties>
             <string name="Name">Ambient</string>
             <string name="Source"><![CDATA[-- Оживляем картинку у игрока: динозавры шагают, виляют хвостом, моргают и открывают рот,
@@ -4260,7 +4357,7 @@ end)
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="19">
+        <Item class="LocalScript" referent="20">
           <Properties>
             <string name="Name">DinoClient</string>
             <string name="Source"><![CDATA[-- Экран игрока: табло, большие кнопки, питомцы, магазин, подарки, колесо, значки, коды, эмоции.
@@ -5611,13 +5708,13 @@ end)
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="20">
+  <Item class="Workspace" referent="21">
     <Properties>
       <string name="Name">Workspace</string>
       <float name="Gravity">196.2</float>
       <bool name="NeedsPivotMigration">false</bool>
     </Properties>
-    <Item class="Terrain" referent="21">
+    <Item class="Terrain" referent="22">
       <Properties>
         <string name="Name">Terrain</string>
         <bool name="Decoration">true</bool>

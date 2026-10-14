@@ -11,7 +11,8 @@ description: >
 ---
 
 Two halves, in this order: **review** (find what is wrong and why), then
-**test** (run the code and prove what works and what does not). A review
+**test** (run the code and prove what works and what does not). Testing
+always means **both** unit tests and end-to-end (e2e) tests; never only one. A review
 finding is a claim; a test is evidence. The report the user gets is built
 from both.
 
@@ -50,6 +51,10 @@ Look for, in this order of importance:
 2. **Risk:** security (injection, trusting client input, secrets in code,
    missing checks at a trust boundary), data loss (swallowed errors, writes
    in the wrong order, saves that can overwrite newer data).
+   Games and apps with a client: assume a cheater controls the client. It can
+   send any position (teleport, speed), call any remote with any argument,
+   hundreds of times a second, and skip any client-side check (a "stand
+   still" that only the client enforces). The server must check all of it.
 3. **Scale:** fine for one, wrong for many: races, per-item queries, lists
    or tables that only grow, O(n²) on big input, work repeated every frame.
 4. **Missing test:** risky logic (branch, parser, money, rewards, security,
@@ -85,7 +90,11 @@ Rules:
 - Cover, in this order: every Must-fix and Should-fix finding (a scenario
   that reproduces it), then the main user flows (happy path), then edge cases
   (empty, zero, limit, leaving mid-way, twice in a row).
-- 5 to 15 scenarios. More only when the user asks.
+- Two lists, both required: **unit** scenarios (one module or function, its
+  rules and edge cases) and **e2e** scenarios (a whole user flow through the
+  running app: start → act → see the result). Every main user flow gets an
+  e2e scenario; every risky rule gets a unit scenario.
+- 5 to 15 scenarios per list. More only when the user asks.
 
 ## 3. Run the tests
 
@@ -103,8 +112,12 @@ Run everything for real. Never mark a scenario passed without evidence
      click visible text, type, wait for the result, then check the page.
      Take a screenshot when an expectation fails;
    - platform you cannot run here (game engine, phone, hardware, paid API) →
-     a small harness that stubs only the platform API and runs the real
-     logic modules; anything still not runnable goes on a manual checklist
+     a harness that stubs only the platform API and runs the real modules.
+     For e2e, run the **whole** server or app in the harness (its main
+     loop, timers, events) on a virtual clock, and drive it like users do:
+     join, walk, press buttons, wait. Make the stub behave like the real
+     platform where timing matters (a `wait()` resumes next frame, not in
+     the same one). Anything still not runnable goes on a manual checklist
      with exact steps.
 3. Tests live in the repo next to the code (follow existing layout, else a
    `tests/` folder), with one command to run them all. Add that command to
@@ -112,6 +125,9 @@ Run everything for real. Never mark a scenario passed without evidence
 4. A test that fails: check the test first (wrong setup or wrong
    expectation?). Only a failure that survives that check counts as a real
    failure. Never weaken an expectation to get green.
+5. Prove the tests can fail: run each new test for a fixed bug against the
+   old code (`git stash` the fix) and show it failing there. A test that
+   passes on broken code proves nothing.
 
 ## 4. Fix (only with `--fix`, or after the user says so)
 
@@ -142,7 +158,8 @@ Each finding, one or two short sentences per part:
    - Test: T3 — failed: "coins became -110 after buying the crown"
 ```
 
-**Test results** as a table: scenario · passed/failed · one-sentence reason.
+**Test results** as two tables, unit and e2e: scenario · passed/failed ·
+one-sentence reason. For fixed bugs show before → after.
 Then the totals (`12 passed, 2 failed`), the command that runs the suite,
 and the existing-check results.
 
