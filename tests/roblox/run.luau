@@ -280,5 +280,20 @@ test("T18 Защита: в клетке не уйти, спам кнопками
 	eq(AC.allow(bucket, 10.2, 8, 15), true, "через 0.2 с один жетон есть")
 end)
 
+test("T20 Надписи над динозаврами не загромождают экран телефона", function()
+	H.fresh()
+	H.load("Graphics").setup()
+	H.load("Arena").buildRound("field", "none")
+	local labels = 0
+	for _, d in H.game:GetService("Workspace").DinoArena:GetDescendants() do
+		if d.ClassName == "BillboardGui" then
+			labels += 1
+			eq(d.Size.X.Offset, 0, "ширина надписи в пикселях (на телефоне огромная): " .. tostring(d.Size))
+			truthy(d.MaxDistance <= 80, "надпись видна слишком издалека: " .. tostring(d.MaxDistance))
+		end
+	end
+	truthy(labels >= 20, "надписей над динозаврами нет")
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 process.exit(failed == 0 and 0 or 1)

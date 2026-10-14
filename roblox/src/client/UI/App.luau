@@ -115,6 +115,12 @@ function App.new(deps)
 	local hatching = source(nil :: any)
 	local spin = source(nil :: any)
 	local codeText = source("")
+	-- телефон: экран низкий или узкий — всё компактнее и подальше от джойстика и прыжка
+	local viewport = source({ w = 1280, h = 720 })
+	local function compact()
+		local v = viewport()
+		return v.h < 500 or v.w < 700
+	end
 
 	local api = {}
 
@@ -207,7 +213,7 @@ function App.new(deps)
 	function api.toast(text: string)
 		local list = table.clone(toasts())
 		table.insert(list, { text = text, untilT = now() + 3.5 })
-		if #list > 4 then
+		while #list > (compact() and 2 or 4) do
 			table.remove(list, 1)
 		end
 		toasts(list)
@@ -231,6 +237,10 @@ function App.new(deps)
 		if first and view.dailyReady then
 			api.toast("🎁 Тебя ждёт подарок! Нажми «Подарок»")
 		end
+	end
+
+	function api.setViewport(w: number, h: number)
+		viewport({ w = w, h = h })
 	end
 
 	function api.setHud(h)
@@ -674,7 +684,7 @@ function App.new(deps)
 		local function chip(name, width, bg, fg, text)
 			return Label {
 				Name = name,
-				Size = UDim2.new(width, -6, 0, 36),
+				Size = UDim2.new(width, -6, 1, -8),
 				BackgroundColor3 = bg or C.cream,
 				BackgroundTransparency = bg and 0 or 1,
 				TextColor3 = fg,
@@ -686,12 +696,16 @@ function App.new(deps)
 			create "Frame" {
 				Name = "Hud",
 				AnchorPoint = Vector2.new(0.5, 0),
-				Position = UDim2.new(0.5, 0, 0, 6),
-				Size = UDim2.new(0.7, 0, 0, 46),
+				Position = function()
+					return UDim2.new(0.5, 0, 0, compact() and 2 or 6)
+				end,
+				Size = function()
+					return compact() and UDim2.new(0.55, 0, 0, 30) or UDim2.new(0.7, 0, 0, 46)
+				end,
 				BackgroundColor3 = C.cream,
 				Corner(),
 				Stroke(),
-				create "UISizeConstraint" { MaxSize = Vector2.new(560, 46), MinSize = Vector2.new(300, 46) },
+				create "UISizeConstraint" { MaxSize = Vector2.new(560, 46), MinSize = Vector2.new(260, 0) },
 				create "UIListLayout" {
 					FillDirection = Enum.FillDirection.Horizontal,
 					HorizontalAlignment = Enum.HorizontalAlignment.Center,
@@ -717,8 +731,12 @@ function App.new(deps)
 			Label {
 				Name = "Status",
 				AnchorPoint = Vector2.new(0.5, 0),
-				Position = UDim2.new(0.5, 0, 0, 56),
-				Size = UDim2.new(0.6, 0, 0, 24),
+				Position = function()
+					return UDim2.new(0.5, 0, 0, compact() and 34 or 56)
+				end,
+				Size = function()
+					return compact() and UDim2.new(0.45, 0, 0, 14) or UDim2.new(0.6, 0, 0, 24)
+				end,
 				TextColor3 = C.cream,
 				TextStrokeTransparency = 0,
 				Text = function()
@@ -729,8 +747,12 @@ function App.new(deps)
 				return Label {
 					Name = "DinoBanner",
 					AnchorPoint = Vector2.new(0.5, 0),
-					Position = UDim2.new(0.5, 0, 0, 82),
-					Size = UDim2.new(0.5, 0, 0, 30),
+					Position = function()
+						return UDim2.new(0.5, 0, 0, compact() and 50 or 82)
+					end,
+					Size = function()
+						return compact() and UDim2.new(0.3, 0, 0, 18) or UDim2.new(0.5, 0, 0, 30)
+					end,
 					BackgroundColor3 = C.red,
 					BackgroundTransparency = 0,
 					TextColor3 = C.cream,
@@ -747,7 +769,9 @@ function App.new(deps)
 				Name = "Big",
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.new(0.5, 0, 0.3, 0),
-				Size = UDim2.new(0.8, 0, 0, 64),
+				Size = function()
+					return compact() and UDim2.new(0.6, 0, 0, 40) or UDim2.new(0.8, 0, 0, 64)
+				end,
 				TextColor3 = C.cream,
 				TextStrokeTransparency = 0,
 				ZIndex = 5,
@@ -768,13 +792,22 @@ function App.new(deps)
 	local function Toasts()
 		return create "Frame" {
 			Name = "Toasts",
-			AnchorPoint = Vector2.new(0.5, 1),
-			Position = UDim2.new(0.5, 0, 1, -16),
-			Size = UDim2.new(0.7, 0, 0, 200),
+			-- на телефоне внизу джойстик и прыжок, поэтому сообщения наверху, под табло
+			AnchorPoint = function()
+				return compact() and Vector2.new(0.5, 0) or Vector2.new(0.5, 1)
+			end,
+			Position = function()
+				return compact() and UDim2.new(0.5, 0, 0, 72) or UDim2.new(0.5, 0, 1, -16)
+			end,
+			Size = function()
+				return compact() and UDim2.new(0.4, 0, 0, 54) or UDim2.new(0.7, 0, 0, 200)
+			end,
 			BackgroundTransparency = 1,
 			ZIndex = 4,
 			create "UIListLayout" {
-				VerticalAlignment = Enum.VerticalAlignment.Bottom,
+				VerticalAlignment = function()
+					return compact() and Enum.VerticalAlignment.Top or Enum.VerticalAlignment.Bottom
+				end,
 				HorizontalAlignment = Enum.HorizontalAlignment.Center,
 				Padding = UDim.new(0, 6),
 				SortOrder = Enum.SortOrder.LayoutOrder,
@@ -783,7 +816,9 @@ function App.new(deps)
 				return Label {
 					Name = "Toast",
 					LayoutOrder = i,
-					Size = UDim2.new(1, 0, 0, 34),
+					Size = function()
+						return UDim2.new(1, 0, 0, compact() and 24 or 34)
+					end,
 					BackgroundColor3 = C.ink,
 					BackgroundTransparency = 0.2,
 					TextColor3 = C.cream,
@@ -968,7 +1003,10 @@ function App.new(deps)
 			local function dinoButton(action, icon, caption, color)
 				return Button {
 					Name = action,
-					Size = UDim2.new(0, 100, 0, 100),
+					Size = function()
+						local px = compact() and 62 or 100
+						return UDim2.new(0, px, 0, px)
+					end,
 					BackgroundColor3 = color,
 					BackgroundTransparency = function()
 						return now() < cooldowns()[action] and 0.4 or 0
@@ -994,8 +1032,13 @@ function App.new(deps)
 			return create "Frame" {
 				Name = "DinoPad",
 				AnchorPoint = Vector2.new(1, 1),
-				Position = UDim2.new(1, -16, 1, -190),
-				Size = UDim2.new(0, 230, 0, 100),
+				-- на телефоне — левее кнопки прыжка Roblox, а не над ней
+				Position = function()
+					return compact() and UDim2.new(1, -150, 1, -12) or UDim2.new(1, -16, 1, -190)
+				end,
+				Size = function()
+					return compact() and UDim2.new(0, 136, 0, 62) or UDim2.new(0, 230, 0, 100)
+				end,
 				BackgroundTransparency = 1,
 				create "UIListLayout" {
 					FillDirection = Enum.FillDirection.Horizontal,

@@ -119,6 +119,14 @@ local app = App.new({
 })
 app.gui.Parent = player:WaitForChild("PlayerGui")
 
+-- размер экрана: на телефоне экран компактнее (и при повороте тоже)
+local function updateViewport()
+	local size = workspace.CurrentCamera.ViewportSize
+	app.setViewport(size.X, size.Y)
+end
+workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateViewport)
+updateViewport()
+
 -- ---------- кнопки в верхней панели Roblox (TopbarPlus) ----------
 
 local icons = {}

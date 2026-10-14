@@ -251,5 +251,53 @@ test("U10 Кнопка пружинит при нажатии", function()
 	truthy(math.abs(scale.Scale - 1) < 0.01, "кнопка вернулась: " .. tostring(scale.Scale))
 end)
 
+-- ---------- телефон: кнопки не закрывают игру ----------
+
+-- прямоугольник элемента на экране W×H (без учёта UISizeConstraint — с запасом)
+local function rect(inst, W, H)
+	local size, pos = inst.Size, inst.Position
+	local anchor = inst.AnchorPoint or { X = 0, Y = 0 }
+	local w = size.X.Scale * W + size.X.Offset
+	local h = size.Y.Scale * H + size.Y.Offset
+	local x = pos.X.Scale * W + pos.X.Offset - anchor.X * w
+	local y = pos.Y.Scale * H + pos.Y.Offset - anchor.Y * h
+	return { x = x, y = y, w = w, h = h }
+end
+local function overlaps(a, b)
+	return a.x < b.x + b.w and b.x < a.x + a.w and a.y < b.y + b.h and b.y < a.y + a.h
+end
+
+test("U11 Телефон: джойстик и прыжок свободны, кнопки занимают мало места", function()
+	local W, H = 812, 375 -- телефон боком
+	local ui = UI.new()
+	if ui.app.setViewport then
+		ui.app.setViewport(W, H)
+	end
+	ui.app.setData(view())
+	ui.app.setHud({ humans = 1, dinos = 2, timeLeft = 80, status = "", map = "🌼 Поле", dinoPlayer = "Миша", boss = true })
+	ui.app.setDino(true)
+	for i = 1, 5 do
+		ui.app.toast("сообщение " .. i)
+	end
+	ui.app.big("🦖 ТИ-РЕКС! БЕГИ!", 3)
+	local thumb = { x = 0, y = H * 0.45, w = W * 0.4, h = H * 0.55 } -- джойстик Roblox
+	local jump = { x = W - 140, y = H - 140, w = 140, h = 140 } -- кнопка прыжка
+	local area = 0
+	for _, inst in ui.app.gui:GetChildren() do
+		local r = rect(inst, W, H)
+		truthy(not overlaps(r, thumb), inst.Name .. " закрывает джойстик")
+		truthy(not overlaps(r, jump), inst.Name .. " закрывает кнопку прыжка")
+		if inst.Name ~= "Big" and inst.Name ~= "Toasts" then -- надпись и сообщения живут 2–4 секунды
+			area += r.w * r.h
+		end
+	end
+	local toasts = 0
+	for _, t in ui.named("Toasts"):GetChildren() do
+		toasts += t.Name == "Toast" and 1 or 0
+	end
+	eq(toasts, 2, "на телефоне сообщений одновременно")
+	truthy(area / (W * H) < 0.15, string.format("постоянные элементы занимают %.0f%% экрана", 100 * area / (W * H)))
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 process.exit(failed == 0 and 0 or 1)

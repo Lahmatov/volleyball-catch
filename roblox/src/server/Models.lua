@@ -41,10 +41,11 @@ Models.cylinder = cylinder
 
 function Models.label(adornee: BasePart, text: string, offsetY: number, color: Color3, maxDistance: number?): TextLabel
 	local bb = Instance.new("BillboardGui")
-	bb.Size = UDim2.new(0, 180, 0, 36)
+	-- размер в шагах мира, а не в пикселях: вдалеке надпись маленькая, на телефоне не закрывает экран
+	bb.Size = UDim2.fromScale(7, 1.4)
 	bb.StudsOffset = Vector3.new(0, offsetY, 0)
 	bb.AlwaysOnTop = true
-	bb.MaxDistance = maxDistance or 120
+	bb.MaxDistance = maxDistance or 60
 	bb.Adornee = adornee
 	local t = Instance.new("TextLabel")
 	t.Size = UDim2.fromScale(1, 1)
@@ -63,10 +64,10 @@ end
 function Models.bubble(adornee: BasePart, offsetY: number): TextLabel
 	local bb = Instance.new("BillboardGui")
 	bb.Name = "Bubble"
-	bb.Size = UDim2.new(0, 220, 0, 50)
+	bb.Size = UDim2.fromScale(9, 2)
 	bb.StudsOffset = Vector3.new(0, offsetY, 0)
 	bb.AlwaysOnTop = true
-	bb.MaxDistance = 90
+	bb.MaxDistance = 60
 	bb.Enabled = false
 	bb.Adornee = adornee
 	local t = Instance.new("TextLabel")
