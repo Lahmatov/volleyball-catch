@@ -1,0 +1,4 @@
+# Инструменты проекта одной командой: `rokit install` (https://github.com/rojo-rbx/rokit)
+[tools]
+rojo = "rojo-rbx/rojo@7.4.4"
+lune = "lune-org/lune@0.9.4"

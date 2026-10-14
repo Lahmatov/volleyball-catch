@@ -120,6 +120,45 @@
 
 ## Тесты
 
+Сначала один раз: `npm install` и `rokit install` ([Rokit](https://github.com/rojo-rbx/rokit) поставит Rojo и Lune нужных версий).
+Потом `npm test`.
+
+- `npm run test:unit`: юнит-тесты. Правила сервера (подарки, магазин, питомцы, коды, колесо, сохранения,
+  смена карт, защита от читов) и правила экрана (`tests/roblox/run.luau`, `tests/roblox/ui.luau`).
+- `npm run test:e2e`: E2E. Веб-версия в браузере (Playwright), весь Roblox-сервер целиком: игроки бегают,
+  попадаются, спасают друг друга, читеры получают отказ, и экран на Vide, который нажимает кнопки
+  и разговаривает с настоящим сервером (`tests/roblox/e2e.luau`).
+- В Lune Roblox заменён заглушками, время виртуальное: 2 минуты игры проходят за пару секунд.
+
+План тестов простыми словами: [`tests/TEST_PLAN.md`](../tests/TEST_PLAN.md).
+
+### Тесты в настоящем Roblox
+
+`tests/cloud/ingame.luau` запускается на настоящем сервере Roblox через Open Cloud Luau Execution.
+Он ловит то, чего не видят заглушки: ошибки в логе, неправильные свойства, ландшафт, скелеты динозавров,
+работу ProfileStore и экрана на настоящих Instance.
+
+Один раз настроить:
+1. Создай отдельное **тестовое** место (не боевое) и опубликуй туда игру.
+2. В [Creator Dashboard](https://create.roblox.com/dashboard/credentials) создай API-ключ Open Cloud
+   с правами `universe.places:write` и `universe.place.luau-execution-session:write` для этого места.
+3. Локально: `ROBLOX_API_KEY=… ROBLOX_UNIVERSE_ID=… ROBLOX_PLACE_ID=… npm run test:roblox-cloud`.
+4. В GitHub: секрет `ROBLOX_API_KEY` и переменные `ROBLOX_TEST_UNIVERSE_ID`, `ROBLOX_TEST_PLACE_ID`.
+   После этого CI (`.github/workflows/tests.yml`) будет запускать эти проверки сам.
+
+## Защита от читов
+
+Сервер не верит игроку: телепорт и ускорение возвращают назад, из клетки не уйти,
+лишние нажатия кнопок (больше 8 в секунду) отбрасываются. Монетки считает только сервер.
+
+## Секретные коды (для взрослых)
+
+`DINO` или `ДИНО` (+50 монеток), `EGG` или `ЯЙЦО` (яйцо), `GOLD` или `ЗОЛОТО` (золотое яйцо),
+`RAINBOW` или `РАДУГА` (радужный след), `ROAR` или `РЫК` (+100 монеток).
+Свои коды можно добавить в `src/server/Progress.lua`.
+
+## Тесты
+
 Из корня репозитория: `npm install`, затем `npm test`.
 - `npm run test:unit`: юнит-тесты Roblox-логики (подарки, магазин, питомцы, коды, колесо,
   сохранения, смена карт, защита от читов) на настоящих модулях игры.
@@ -128,6 +167,18 @@
 - Для Roblox-тестов нужен [Lune](https://github.com/lune-org/lune): Roblox заменён заглушками, время виртуальное.
 
 План тестов простыми словами: [`tests/TEST_PLAN.md`](../tests/TEST_PLAN.md).
+
+## Экран и сохранение
+
+- **Экран** сделан на [Vide](https://github.com/centau/vide): кнопки пружинят, окна выезжают с отскоком,
+  карточка питомца «выпрыгивает». Кнопки меню (Питомцы, Магазин, Подарок, Колесо, Значки, Коды, Эмоции, 🎵)
+  стоят в верхней панели Roblox через [TopbarPlus](https://github.com/1ForeverHD/TopbarPlus), поэтому на
+  телефоне не закрывают поле. Красные точки показывают, что ждёт подарок или яйцо.
+- **Сохранение** через [ProfileStore](https://github.com/MadStudioRoblox/ProfileStore): данные игрока
+  «заперты» на одном сервере, поэтому быстрый переход между серверами ничего не затрёт. Старые сохранения
+  (`DinoEggCatch_v1`) один раз переезжают в новые (`DinoEggCatch_v2`).
+- Сторонние библиотеки лежат в `roblox/Packages` (версии и лицензии в `Packages/README.md`).
+  TopbarPlus просит не трогать его файл `Attribute.lua`: это и есть упоминание авторов.
 
 ## Что можно поменять
 
@@ -147,9 +198,12 @@ src/server/Models.lua          модели из деталей: динозав�
 src/server/Graphics.lua        свет, атмосфера, облака, ландшафт, вид каждой карты
 src/server/Looks.lua           костюмы, питомцы, превращение в динозавра
 src/server/Progress.lua        монетки, магазин, подарки, колесо, коды, значки
-src/server/Data.lua            сохранение
+src/server/Data.lua            сохранение (ProfileStore)
+src/server/AntiCheat.lua       защита от читов
 src/server/Net.lua             связь сервера и экрана
-src/client/DinoClient.client.lua  экран игрока: кнопки, окна, музыка
+src/client/DinoClient.client.lua  связка с Roblox: TopbarPlus, музыка, звуки, Динопарк, лёд
+src/client/UI/App.luau         экран на Vide: табло, окна, вылупление, колесо, кнопки динозавра
+src/client/UI/Logic.luau       правила экрана без экрана (что показать в магазине, подарках, колесе)
 src/client/Ambient.client.lua     анимация динозавров, бабочки, погода
 ```
 

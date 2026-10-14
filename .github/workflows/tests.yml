@@ -1,0 +1,56 @@
+name: Тесты
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    name: Юнит и E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Инструменты Roblox (Rokit → Rojo, Lune)
+        run: |
+          curl -sSf https://raw.githubusercontent.com/rojo-rbx/rokit/main/scripts/install.sh | bash
+          echo "$HOME/.rokit/bin" >> "$GITHUB_PATH"
+          "$HOME/.rokit/bin/rokit" authenticate github --token "${{ secrets.GITHUB_TOKEN }}"
+          "$HOME/.rokit/bin/rokit" install --no-trust-check
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+      - name: Игра собирается
+        run: cd roblox && rojo build -o /tmp/DinoEggCatch.rbxlx
+
+  roblox:
+    name: Проверки внутри настоящего Roblox
+    needs: tests
+    runs-on: ubuntu-latest
+    # запускается, только когда в настройках репозитория есть ключ Open Cloud
+    env:
+      ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
+      ROBLOX_UNIVERSE_ID: ${{ vars.ROBLOX_TEST_UNIVERSE_ID }}
+      ROBLOX_PLACE_ID: ${{ vars.ROBLOX_TEST_PLACE_ID }}
+    concurrency:
+      group: roblox-luau-execution
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        if: env.ROBLOX_API_KEY != ''
+      - name: Инструменты Roblox
+        if: env.ROBLOX_API_KEY != ''
+        run: |
+          curl -sSf https://raw.githubusercontent.com/rojo-rbx/rokit/main/scripts/install.sh | bash
+          echo "$HOME/.rokit/bin" >> "$GITHUB_PATH"
+          "$HOME/.rokit/bin/rokit" authenticate github --token "${{ secrets.GITHUB_TOKEN }}"
+          "$HOME/.rokit/bin/rokit" install --no-trust-check
+      - name: Тесты в Roblox (Open Cloud Luau Execution)
+        if: env.ROBLOX_API_KEY != ''
+        run: python3 tests/cloud/run_in_roblox.py
+      - name: Ключа нет — пропускаем
+        if: env.ROBLOX_API_KEY == ''
+        run: echo "Добавь секрет ROBLOX_API_KEY и переменные ROBLOX_TEST_UNIVERSE_ID, ROBLOX_TEST_PLACE_ID (см. roblox/README.md)"

@@ -13,8 +13,9 @@ local function Signal()
 		return { Disconnect = function() end }
 	end
 	function s:Fire(...)
+		-- как в Roblox: каждый обработчик в своём потоке, ему можно ждать
 		for _, f in self.handlers do
-			f(...)
+			H.task.spawn(f, ...)
 		end
 	end
 	return s
@@ -233,9 +234,74 @@ function Methods:GetPlayers()
 	end
 	return out
 end
-function Methods:GetDataStore()
-	return H.store
+-- ---------- DataStore: как настоящий, данные копируются при записи и чтении ----------
+
+local function deepCopy(v)
+	if type(v) ~= "table" then
+		return v
+	end
+	local out = {}
+	for k, x in v do
+		out[k] = deepCopy(x)
+	end
+	return out
 end
+H.deepCopy = deepCopy
+
+local function newStore(name)
+	local store = { name = name, data = {}, versions = {} }
+	local function keyInfo(key)
+		local version = store.versions[key] or 0
+		return {
+			Version = "v" .. version,
+			CreatedTime = 0,
+			UpdatedTime = H.now * 1000,
+			GetMetadata = function()
+				return {}
+			end,
+			GetUserIds = function()
+				return {}
+			end,
+		}
+	end
+	function store:GetAsync(key)
+		return deepCopy(self.data[key]), keyInfo(key)
+	end
+	function store:SetAsync(key, value)
+		self.data[key] = deepCopy(value)
+		self.versions[key] = (self.versions[key] or 0) + 1
+	end
+	function store:RemoveAsync(key)
+		local old = self.data[key]
+		self.data[key] = nil
+		return old
+	end
+	function store:UpdateAsync(key, transform)
+		local new = transform(deepCopy(self.data[key]), keyInfo(key))
+		if new ~= nil then
+			self:SetAsync(key, new)
+		end
+		return deepCopy(self.data[key]), keyInfo(key)
+	end
+	return store
+end
+function Methods:GetDataStore(name)
+	H.stores[name] = H.stores[name] or newStore(name)
+	return H.stores[name]
+end
+function Methods:SetExperimentalFeatures() end
+function Methods:IsStudio()
+	return true
+end
+local guid = 0
+function Methods:GenerateGUID()
+	guid += 1
+	return "guid-" .. guid
+end
+function Methods:SubscribeAsync()
+	return { Disconnect = function() end }
+end
+function Methods:PublishAsync() end
 function Methods:AwardBadge() end
 -- ландшафт: запоминаем, чем и что залито
 function Methods:Clear()
@@ -322,7 +388,23 @@ local function resume(co, ...)
 end
 H.task = {
 	spawn = function(f, ...)
-		resume(coroutine.create(f), ...)
+		local co = type(f) == "thread" and f or coroutine.create(f)
+		resume(co, ...)
+		return co
+	end,
+	defer = function(f, ...)
+		local co = type(f) == "thread" and f or coroutine.create(f)
+		table.insert(queue, { at = H.clock, co = co, args = table.pack(...), step = stepNo })
+		return co
+	end,
+	cancel = function(co)
+		for i, item in queue do
+			if item.co == co then
+				table.remove(queue, i)
+				break
+			end
+		end
+		pcall(coroutine.close, co)
 	end,
 	wait = function(n)
 		local co = coroutine.running()
@@ -330,7 +412,9 @@ H.task = {
 		return coroutine.yield()
 	end,
 	delay = function(n, f, ...)
-		table.insert(queue, { at = H.clock + (n or 0), co = coroutine.create(f), args = table.pack(...), step = stepNo })
+		local co = type(f) == "thread" and f or coroutine.create(f)
+		table.insert(queue, { at = H.clock + (n or 0), co = co, args = table.pack(...), step = stepNo })
+		return co
 	end,
 }
 
@@ -357,6 +441,22 @@ function H.step(dt)
 		end
 	end
 	H.game:GetService("RunService").Heartbeat:Fire(dt)
+end
+
+-- выполнить функцию, которой можно ждать (как в своём потоке Roblox), и прожить время, пока она не закончит
+function H.await(fn, ...)
+	local results
+	local co = coroutine.create(function(...)
+		results = table.pack(fn(...))
+	end)
+	resume(co, ...)
+	local guard = 0
+	while coroutine.status(co) ~= "dead" do
+		guard += 1
+		assert(guard < 6000, "H.await: функция не закончилась за 100 секунд игрового времени")
+		H.step(1 / 60)
+	end
+	return table.unpack(results, 1, results.n)
 end
 
 function H.run(seconds, dt)
@@ -386,17 +486,13 @@ function H.fresh(opts)
 	H.now = 1000000
 	nextId = 1
 	H.month = opts.month
-	H.saved = opts.saved or {}
-	H.store = {
-		GetAsync = function(_, key)
-			return H.saved[key]
-		end,
-		SetAsync = function(_, key, value)
-			H.saved[key] = value
-		end,
-	}
+	H.stores = {}
 	H.game = new("DataModel")
 	local game = H.game
+	game.PlaceId = 1
+	game.JobId = "test-server"
+	-- старые сохранения (до ProfileStore)
+	game:GetService("DataStoreService"):GetDataStore("DinoEggCatch_v1").data = deepCopy(opts.saved or {})
 	local rs = game:GetService("ReplicatedStorage")
 	local shared = new("Folder")
 	shared.Name = "DinoShared"
@@ -409,6 +505,10 @@ function H.fresh(opts)
 		H.modules[name] = moduleScript(server, name, "roblox/src/server/" .. name .. ".lua")
 	end
 	H.modules.Main = moduleScript(server, "Main", "roblox/src/server/Main.server.lua")
+	local serverPackages = new("Folder")
+	serverPackages.Name = "ServerPackages"
+	serverPackages.Parent = game:GetService("ServerScriptService")
+	H.modules.ProfileStore = moduleScript(serverPackages, "ProfileStore", "roblox/Packages/ProfileStore/ProfileStore.luau")
 	local terrain = new("Terrain")
 	terrain.Name = "Terrain"
 	terrain.Parent = game:GetService("Workspace")

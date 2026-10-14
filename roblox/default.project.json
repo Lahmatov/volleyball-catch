@@ -5,11 +5,26 @@
     "ReplicatedStorage": {
       "DinoShared": {
         "$path": "src/shared"
+      },
+      "Packages": {
+        "$className": "Folder",
+        "vide": {
+          "$path": "Packages/vide/src"
+        },
+        "TopbarPlus": {
+          "$path": "Packages/TopbarPlus/src"
+        }
       }
     },
     "ServerScriptService": {
       "DinoServer": {
         "$path": "src/server"
+      },
+      "ServerPackages": {
+        "$className": "Folder",
+        "ProfileStore": {
+          "$path": "Packages/ProfileStore/ProfileStore.luau"
+        }
       }
     },
     "StarterPlayer": {

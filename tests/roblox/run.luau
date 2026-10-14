@@ -36,7 +36,7 @@ local function setup(opts)
 	local Progress = H.load("Progress")
 	local Config = H.load("Config")
 	local player = H.addPlayer("Аня")
-	Data.load(player)
+	H.await(Data.load, player)
 	return Progress, Data, Config, player
 end
 
@@ -175,17 +175,41 @@ test("T13 Золотой питомец удваивает только моне
 	eq(prof.coins, 15, "всего монеток")
 end)
 
-test("T14 Старое сохранение без новых полей", function()
+test("T14 Старое сохранение переезжает в ProfileStore один раз", function()
 	H.fresh({ saved = { u1 = { coins = 77, badges = { first_egg = true } } } })
 	local Data = H.load("Data")
 	H.load("Progress")
 	local p = H.addPlayer("Миша")
-	local prof = Data.load(p)
-	eq(prof.coins, 77, "монетки из сохранения")
-	eq(prof.badges.first_egg, true, "значок из сохранения")
+	local prof = H.await(Data.load, p)
+	eq(prof.coins, 77, "монетки из старого сохранения")
+	eq(prof.badges.first_egg, true, "значок из старого сохранения")
 	eq(prof.eggs.normal, 0, "новое поле eggs")
 	eq(prof.equipped.trail, "", "новое поле equipped")
+	eq(prof.migrated, true, "отметка о переезде")
+	prof.coins = 10
+	Data.release(p)
+	H.run(1)
+	-- старое сохранение больше не перетирает новое
+	H.stores.DinoEggCatch_v1.data.u1.coins = 999
+	local again = H.await(Data.load, p)
+	eq(again.coins, 10, "монетки после второго входа")
+end)
+
+test("T19 Выход из игры сохраняет прогресс и снимает замок", function()
+	H.fresh()
+	local Data = H.load("Data")
+	local p = H.addPlayer("Лиза")
+	local prof = H.await(Data.load, p)
 	eq(Data.isSaving(p), true, "сохранять можно")
+	local entry = H.stores.DinoEggCatch_v2.data.u1
+	truthy(entry and entry.MetaData.ActiveSession ~= nil, "пока игрок в игре, профиль заперт на этом сервере")
+	prof.coins = 33
+	Data.release(p)
+	H.run(1)
+	entry = H.stores.DinoEggCatch_v2.data.u1
+	eq(entry.Data.coins, 33, "монетки в хранилище")
+	eq(entry.MetaData.ActiveSession, nil, "замок снят")
+	eq(Data.get(p), nil, "профиль отпущен")
 end)
 
 test("T15 Смена карт не портит горы и вулкан", function()

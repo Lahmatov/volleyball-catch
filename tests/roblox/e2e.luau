@@ -219,5 +219,103 @@ test("E8 Спам кнопками из чит-скрипта отсекаетс
 	truthy(H.invoke(p, "getData").coins ~= nil, "через секунду кнопки снова работают")
 end)
 
+-- ---------- экран игрока + сервер вместе ----------
+
+local UI = require("./ui_loader")
+
+-- экран игрока (Vide), подключённый к настоящему серверу на стенде
+local function connectClient(player)
+	local seen = #H.sent
+	local app
+	local function pump()
+		while seen < #H.sent do
+			seen += 1
+			local ev = H.sent[seen]
+			if ev.player == nil or ev.player == player then
+				if ev.kind == "data" then
+					app.setData(ev.payload)
+				elseif ev.kind == "toast" then
+					app.toast(ev.payload)
+				elseif ev.kind == "big" then
+					app.big(ev.payload.text, ev.payload.seconds)
+				end
+			end
+		end
+	end
+	app = UI.App.new({
+		ask = function(action, arg)
+			local res = H.invoke(player, action, arg)
+			pump()
+			return res
+		end,
+		delay = function() end,
+	})
+	app.setData(H.invoke(player, "getData"))
+	local client = { app = app }
+	function client.sync()
+		pump()
+		app.setHud({
+			humans = H.attr("Humans") or 0,
+			dinos = H.attr("Dinos") or 0,
+			timeLeft = H.attr("TimeLeft") or -1,
+			status = H.attr("Status") or "",
+			map = H.attr("Map") or "",
+			dinoPlayer = H.attr("DinoPlayer") or "",
+			boss = H.attr("Boss") == true,
+		})
+		app.tick(H.clock)
+	end
+	function client.find(text, exact)
+		return UI.byText(app.gui, text, exact)
+	end
+	function client.named(name)
+		return UI.byName(app.gui, name)
+	end
+	return client
+end
+
+test("E9 Экран: унёс яйцо, монетки на табло, вылупил питомца в окне", function()
+	local p = startRound({ "Аня" })[1]
+	local client = connectClient(p)
+	eggRun(p)
+	client.sync()
+	eq(client.named("Coins").Text, "🪙 5", "монетки на табло")
+	eq(client.named("Humans").Text, "👫 Люди 1", "очки людей на табло")
+	client.app.open("pets")
+	UI.press(client.find("Вылупить", true))
+	client.sync()
+	truthy(client.named("Hatch"), "окно вылупления")
+	eq(#data().get(p).pets, 1, "питомец появился на сервере")
+	truthy(client.find("динозаврик"), "питомец в списке на экране")
+	truthy(client.find("Снять", true), "питомец сразу надет")
+end)
+
+test("E10 Экран: секретный код, потом покупка шапки", function()
+	local p = startRound({ "Аня" })[1]
+	local client = connectClient(p)
+	client.app.open("codes")
+	client.named("CodeBox").Text = "DINO"
+	UI.press(client.find("Проверить", true))
+	client.sync()
+	eq(client.named("Coins").Text, "🪙 50", "монетки за код")
+	client.app.open("shop")
+	UI.press(UI.byText(client.named("Panel"), "🪙 50", true)) -- кнопка в магазине, а не табло с монетками
+	client.sync()
+	eq(data().get(p).owned.hat_dino, true, "шапка куплена на сервере")
+	eq(data().get(p).equipped.hat, "hat_dino", "шапка надета на сервере")
+	eq(client.named("Coins").Text, "🪙 0", "монетки на табло")
+	truthy(client.find("Снять", true), "на кнопке «Снять»")
+end)
+
+test("E11 Экран: подарок дня", function()
+	local p = startRound({ "Аня" })[1]
+	local client = connectClient(p)
+	client.app.open("daily")
+	UI.press(client.find("Открыть подарок 🎁", true))
+	client.sync()
+	eq(client.named("Coins").Text, "🪙 20", "монетки за первый день")
+	truthy(client.find("Следующий подарок через"), "на экране — сколько ждать")
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 process.exit(failed == 0 and 0 or 1)
