@@ -97,6 +97,16 @@ test("L5 Питомцы: редкие сверху, надетый отмече�
 	eq(rows[3].kind, "green", "последний")
 end)
 
+test("L6 На чём играют и что написать на кнопке", function()
+	eq(Logic.inputKind("Touch"), "touch", "телефон")
+	eq(Logic.inputKind("Gamepad1"), "gamepad", "PlayStation / Xbox")
+	eq(Logic.inputKind("Keyboard"), "keyboard", "клавиатура")
+	eq(Logic.inputKind("MouseButton1"), "keyboard", "мышь — тоже компьютер")
+	eq(Logic.actionCaption("roar", "keyboard"), "РЫК (Q)", "компьютер")
+	eq(Logic.actionCaption("roar", "touch"), "РЫК", "на телефоне нет клавиши Q")
+	eq(Logic.actionCaption("dash", "gamepad"), "РЫВОК", "на геймпаде значок кнопки рядом")
+end)
+
 -- ---------- экран ----------
 
 test("U1 Табло показывает очки, время, карту и монетки", function()
@@ -297,6 +307,79 @@ test("U11 Телефон: джойстик и прыжок свободны, к�
 	end
 	eq(toasts, 2, "на телефоне сообщений одновременно")
 	truthy(area / (W * H) < 0.15, string.format("постоянные элементы занимают %.0f%% экрана", 100 * area / (W * H)))
+end)
+
+-- ---------- телефон, приставка, телевизор ----------
+
+local function hasText(root, text)
+	return UI.byText(root, text) ~= nil
+end
+
+test("U12 Приставка (PS5, Xbox): подсказки кнопок геймпада вместо кнопок на экране", function()
+	local ui = UI.new()
+	ui.app.setInput("gamepad")
+	ui.app.setDino(true)
+	eq(ui.named("DinoPad"), nil, "на приставке на экран не нажать пальцем")
+	local hints = ui.named("DinoHints")
+	truthy(hints, "нет подсказок кнопок геймпада")
+	local images = {}
+	for _, inst in UI.all(hints) do
+		if inst.Image then
+			table.insert(images, inst.Image)
+		end
+	end
+	truthy(table.find(images, "rbxasset://glyph/ButtonY"), "нет значка кнопки рыка (△ / Y)")
+	truthy(table.find(images, "rbxasset://glyph/ButtonR1"), "нет значка кнопки рывка (R1 / RB)")
+	truthy(not hasText(ui.app.gui, "(Q)"), "на приставке не должно быть клавиши Q")
+end)
+
+test("U13 Телефон: кнопки динозавра без клавиш клавиатуры", function()
+	local ui = UI.new()
+	ui.app.setInput("touch")
+	ui.app.setDino(true)
+	truthy(ui.named("DinoPad"), "на телефоне нужны кнопки на экране")
+	truthy(ui.find("РЫК", true), "подпись «РЫК»")
+	truthy(not hasText(ui.app.gui, "(Q)"), "на телефоне нет клавиши Q")
+	eq(ui.named("DinoHints"), nil, "подсказок геймпада нет")
+end)
+
+test("U14 Компьютер: на кнопках клавиши Q и F", function()
+	local ui = UI.new()
+	ui.app.setInput("keyboard")
+	ui.app.setDino(true)
+	truthy(ui.find("РЫК (Q)", true), "клавиша рыка")
+	truthy(ui.find("РЫВОК (F)", true), "клавиша рывка")
+end)
+
+test("U15 Телевизор: крупнее, и ничего не за краем экрана", function()
+	local W, H = 1920, 1080
+	local ui = UI.new()
+	ui.app.setViewport(W, H)
+	local normal = rect(ui.named("Hud"), W, H).h
+	ui.app.setTenFoot(true)
+	ui.app.setInput("gamepad")
+	ui.app.setDino(true)
+	ui.app.setHud({ humans = 1, dinos = 0, timeLeft = 60, status = "", map = "🌼 Поле", dinoPlayer = "", boss = false })
+	truthy(rect(ui.named("Hud"), W, H).h > normal, "на телевизоре табло крупнее")
+	-- телевизоры обрезают края: держим всё внутри 5% от краёв
+	for _, inst in ui.app.gui:GetChildren() do
+		local r = rect(inst, W, H)
+		truthy(r.x >= W * 0.05 - 1 and r.y >= 0 and r.x + r.w <= W * 0.95 + 1 and r.y + r.h <= H * 0.95 + 1, inst.Name .. " у самого края телевизора")
+	end
+end)
+
+test("U16 Геймпад: окно меню сразу даёт, что выбрать кнопками", function()
+	local opened
+	local ui = UI.new(nil, {
+		onPanelOpened = function(frame)
+			opened = frame
+		end,
+	})
+	ui.app.setInput("gamepad")
+	ui.app.setData(view())
+	ui.app.open("shop")
+	truthy(opened and opened.Name == "Panel", "экран не сообщил, что окно открыто")
+	truthy(UI.byText(opened, "🪙 50", true), "в открытом окне есть кнопки для выбора")
 end)
 
 print(string.format("\n%d passed, %d failed", passed, failed))

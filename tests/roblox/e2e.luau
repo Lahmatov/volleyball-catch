@@ -317,5 +317,33 @@ test("E11 Экран: подарок дня", function()
 	truthy(client.find("Следующий подарок через"), "на экране — сколько ждать")
 end)
 
+test("E12 Динозавр на приставке рычит, люди рядом замедляются", function()
+	local players = startRound({ "Аня", "Миша", "Лиза" })
+	local dino
+	for _, p in players do
+		if p.DisplayName == H.attr("DinoPlayer") then
+			dino = p
+		end
+	end
+	truthy(dino, "никто не стал динозавром")
+	local client = connectClient(dino)
+	client.app.setInput("gamepad")
+	client.app.setDino(true)
+	client.sync()
+	truthy(client.named("DinoHints"), "на приставке подсказки кнопок геймпада")
+	client.app.dinoAction("roar") -- так обрабатывается кнопка △ / Y
+	H.run(0.2)
+	client.sync()
+	local slowed = 0
+	for _, p in players do
+		if p ~= dino and flatDist(H.root(p).Position, H.root(dino).Position) < 25 then
+			eq(p.Character.Humanoid.WalkSpeed, 6, p.Name .. " замедлен рыком")
+			slowed += 1
+		end
+	end
+	truthy(slowed > 0, "рядом с динозавром никого не было")
+	truthy(client.find("8"), "на подсказке перезарядка 8 секунд")
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 process.exit(failed == 0 and 0 or 1)

@@ -121,6 +121,16 @@ function App.new(deps)
 		local v = viewport()
 		return v.h < 500 or v.w < 700
 	end
+	-- на чём играют: "touch" — телефон, "gamepad" — PlayStation/Xbox, "keyboard" — компьютер
+	local input = source("keyboard")
+	-- телевизор (приставка): смотрят издалека — всё крупнее и подальше от краёв
+	local tenFoot = source(false)
+	local function k(): number
+		return tenFoot() and 1.25 or 1
+	end
+	local glyph = deps.glyph or function()
+		return ""
+	end
 
 	local api = {}
 
@@ -241,6 +251,14 @@ function App.new(deps)
 
 	function api.setViewport(w: number, h: number)
 		viewport({ w = w, h = h })
+	end
+
+	function api.setInput(kind: string)
+		input(kind)
+	end
+
+	function api.setTenFoot(on: boolean)
+		tenFoot(on)
 	end
 
 	function api.setHud(h)
@@ -700,12 +718,17 @@ function App.new(deps)
 					return UDim2.new(0.5, 0, 0, compact() and 2 or 6)
 				end,
 				Size = function()
-					return compact() and UDim2.new(0.55, 0, 0, 30) or UDim2.new(0.7, 0, 0, 46)
+					return compact() and UDim2.new(0.55, 0, 0, 30) or UDim2.new(0.7, 0, 0, 46 * k())
 				end,
 				BackgroundColor3 = C.cream,
 				Corner(),
 				Stroke(),
-				create "UISizeConstraint" { MaxSize = Vector2.new(560, 46), MinSize = Vector2.new(260, 0) },
+				create "UISizeConstraint" {
+					MaxSize = function()
+						return Vector2.new(560 * k(), 46 * k())
+					end,
+					MinSize = Vector2.new(260, 0),
+				},
 				create "UIListLayout" {
 					FillDirection = Enum.FillDirection.Horizontal,
 					HorizontalAlignment = Enum.HorizontalAlignment.Center,
@@ -732,10 +755,10 @@ function App.new(deps)
 				Name = "Status",
 				AnchorPoint = Vector2.new(0.5, 0),
 				Position = function()
-					return UDim2.new(0.5, 0, 0, compact() and 34 or 56)
+					return UDim2.new(0.5, 0, 0, compact() and 34 or (10 + 46 * k()))
 				end,
 				Size = function()
-					return compact() and UDim2.new(0.45, 0, 0, 14) or UDim2.new(0.6, 0, 0, 24)
+					return compact() and UDim2.new(0.45, 0, 0, 14) or UDim2.new(0.6, 0, 0, 24 * k())
 				end,
 				TextColor3 = C.cream,
 				TextStrokeTransparency = 0,
@@ -748,10 +771,10 @@ function App.new(deps)
 					Name = "DinoBanner",
 					AnchorPoint = Vector2.new(0.5, 0),
 					Position = function()
-						return UDim2.new(0.5, 0, 0, compact() and 50 or 82)
+						return UDim2.new(0.5, 0, 0, compact() and 50 or (14 + 70 * k()))
 					end,
 					Size = function()
-						return compact() and UDim2.new(0.3, 0, 0, 18) or UDim2.new(0.5, 0, 0, 30)
+						return compact() and UDim2.new(0.3, 0, 0, 18) or UDim2.new(0.5, 0, 0, 30 * k())
 					end,
 					BackgroundColor3 = C.red,
 					BackgroundTransparency = 0,
@@ -770,7 +793,7 @@ function App.new(deps)
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.new(0.5, 0, 0.3, 0),
 				Size = function()
-					return compact() and UDim2.new(0.6, 0, 0, 40) or UDim2.new(0.8, 0, 0, 64)
+					return compact() and UDim2.new(0.6, 0, 0, 40) or UDim2.new(0.8, 0, 0, 64 * k())
 				end,
 				TextColor3 = C.cream,
 				TextStrokeTransparency = 0,
@@ -797,7 +820,11 @@ function App.new(deps)
 				return compact() and Vector2.new(0.5, 0) or Vector2.new(0.5, 1)
 			end,
 			Position = function()
-				return compact() and UDim2.new(0.5, 0, 0, 72) or UDim2.new(0.5, 0, 1, -16)
+				if compact() then
+					return UDim2.new(0.5, 0, 0, 72)
+				end
+				-- на телевизоре край экрана бывает обрезан
+				return tenFoot() and UDim2.new(0.5, 0, 0.94, 0) or UDim2.new(0.5, 0, 1, -16)
 			end,
 			Size = function()
 				return compact() and UDim2.new(0.4, 0, 0, 54) or UDim2.new(0.7, 0, 0, 200)
@@ -817,7 +844,7 @@ function App.new(deps)
 					Name = "Toast",
 					LayoutOrder = i,
 					Size = function()
-						return UDim2.new(1, 0, 0, compact() and 24 or 34)
+						return UDim2.new(1, 0, 0, compact() and 24 or 34 * k())
 					end,
 					BackgroundColor3 = C.ink,
 					BackgroundTransparency = 0.2,
@@ -837,7 +864,7 @@ function App.new(deps)
 			local opened = source(0)
 			local slide = spring(opened, 0.35, 0.6)
 			opened(1)
-			return create "Frame" {
+			local frame = create "Frame" {
 				Name = "Panel",
 				Size = UDim2.fromScale(1, 1),
 				BackgroundColor3 = C.ink,
@@ -901,6 +928,11 @@ function App.new(deps)
 					},
 				},
 			}
+			-- на приставке связка сразу выделит кнопку в окне, чтобы выбирать геймпадом
+			if deps.onPanelOpened then
+				deps.onPanelOpened(frame)
+			end
+			return frame
 		end)
 	end
 
@@ -998,9 +1030,66 @@ function App.new(deps)
 		end)
 	end
 
+	-- приставка: на экран не нажать, показываем, какую кнопку геймпада жать (значок PlayStation или Xbox)
+	local function DinoHints()
+		return show(function()
+			return isDino() and input() == "gamepad"
+		end, function()
+			local function hint(action)
+				local key = Logic.DINO_KEYS[action]
+				return create "Frame" {
+					Name = action,
+					Size = UDim2.new(0, 130, 1, 0),
+					BackgroundColor3 = C.ink,
+					BackgroundTransparency = function()
+						return now() < cooldowns()[action] and 0.6 or 0.25
+					end,
+					Corner(UDim.new(1, 0)),
+					create "UIListLayout" {
+						FillDirection = Enum.FillDirection.Horizontal,
+						VerticalAlignment = Enum.VerticalAlignment.Center,
+						Padding = UDim.new(0, 6),
+					},
+					Pad(6, 4),
+					create "ImageLabel" {
+						Size = UDim2.new(0, 40, 0, 40),
+						BackgroundTransparency = 1,
+						Image = glyph(key.gamepad),
+					},
+					Label {
+						Size = UDim2.new(1, -46, 0.7, 0),
+						TextColor3 = C.cream,
+						Text = function()
+							local left = cooldowns()[action] - now()
+							return left > 0 and tostring(math.ceil(left)) or key.name
+						end,
+					},
+				}
+			end
+			return create "Frame" {
+				Name = "DinoHints",
+				AnchorPoint = Vector2.new(1, 1),
+				Position = UDim2.fromScale(0.93, 0.93),
+				Size = function()
+					return UDim2.new(0, 270 * k(), 0, 52 * k())
+				end,
+				BackgroundTransparency = 1,
+				create "UIListLayout" {
+					FillDirection = Enum.FillDirection.Horizontal,
+					HorizontalAlignment = Enum.HorizontalAlignment.Right,
+					Padding = UDim.new(0, 10),
+				},
+				hint("roar"),
+				hint("dash"),
+			}
+		end)
+	end
+
 	local function DinoPad()
-		return show(isDino, function()
-			local function dinoButton(action, icon, caption, color)
+		return show(function()
+			return isDino() and input() ~= "gamepad"
+		end, function()
+			local function dinoButton(action, icon, color)
 				return Button {
 					Name = action,
 					Size = function()
@@ -1024,7 +1113,7 @@ function App.new(deps)
 						TextStrokeTransparency = 0.3,
 						Text = function()
 							local left = cooldowns()[action] - now()
-							return left > 0 and tostring(math.ceil(left)) or caption
+							return left > 0 and tostring(math.ceil(left)) or Logic.actionCaption(action, input())
 						end,
 					},
 				}
@@ -1045,8 +1134,8 @@ function App.new(deps)
 					Padding = UDim.new(0, 12),
 					HorizontalAlignment = Enum.HorizontalAlignment.Right,
 				},
-				dinoButton("roar", "🦖", "РЫК (Q)", C.red),
-				dinoButton("dash", "💨", "РЫВОК (F)", C.blue),
+				dinoButton("roar", "🦖", C.red),
+				dinoButton("dash", "💨", C.blue),
 			}
 		end)
 	end
@@ -1060,6 +1149,7 @@ function App.new(deps)
 			Toasts(),
 			BigText(),
 			DinoPad(),
+			DinoHints(),
 			PanelWindow(),
 			HatchLayer(),
 		}

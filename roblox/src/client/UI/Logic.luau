@@ -143,4 +143,30 @@ function Logic.dots(data)
 	return { daily = data.dailyReady == true, wheel = data.wheelReady == true, pets = eggs > 0 }
 end
 
+-- на чём играют: "touch" (телефон, планшет), "gamepad" (PlayStation, Xbox), "keyboard" (компьютер).
+-- lastInputType — имя Enum.UserInputType (UserInputService:GetLastInputType().Name)
+function Logic.inputKind(lastInputType: string): string
+	if lastInputType == "Touch" then
+		return "touch"
+	elseif string.sub(lastInputType, 1, 7) == "Gamepad" then
+		return "gamepad"
+	end
+	return "keyboard"
+end
+
+-- кнопки динозавра на клавиатуре и геймпаде (на PlayStation ButtonY — △, ButtonR1 — R1)
+Logic.DINO_KEYS = {
+	roar = { keyboard = "Q", gamepad = "ButtonY", name = "РЫК" },
+	dash = { keyboard = "F", gamepad = "ButtonR1", name = "РЫВОК" },
+}
+
+-- подпись на кнопке: клавишу показываем только тем, у кого есть клавиатура
+function Logic.actionCaption(action: string, input: string): string
+	local key = Logic.DINO_KEYS[action]
+	if input == "keyboard" then
+		return key.name .. " (" .. key.keyboard .. ")"
+	end
+	return key.name
+end
+
 return Logic

@@ -6,6 +6,7 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
 local CollectionService = game:GetService("CollectionService")
+local GuiService = game:GetService("GuiService")
 
 local player = Players.LocalPlayer
 local Config = require(ReplicatedStorage:WaitForChild("DinoShared"):WaitForChild("Config"))
@@ -111,13 +112,47 @@ end
 
 -- ---------- экран ----------
 
+local currentInput = "keyboard"
+
+-- первая кнопка в окне: на приставке её сразу выделяем, дальше выбирают крестовиной
+local function selectFirstButton(frame: Instance)
+	if currentInput ~= "gamepad" then
+		return
+	end
+	task.defer(function()
+		local content = frame:FindFirstChild("Content", true)
+		for _, d in ipairs((content or frame):GetDescendants()) do
+			if d:IsA("GuiButton") and d.Visible then
+				GuiService.SelectedObject = d
+				return
+			end
+		end
+	end)
+end
+
 local app = App.new({
 	ask = ask,
 	sound = playSound,
 	speak = speak,
 	emote = playEmote,
+	-- значок кнопки как на геймпаде игрока: △ на PlayStation, Y на Xbox
+	glyph = function(keyName: string)
+		local ok, image = pcall(UserInputService.GetImageForKeyCode, UserInputService, (Enum.KeyCode :: any)[keyName])
+		return ok and image or ""
+	end,
+	onPanelOpened = selectFirstButton,
 })
+app.gui.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets -- не под вырезом iPhone и не за краем телевизора
 app.gui.Parent = player:WaitForChild("PlayerGui")
+
+-- на чём играют: телефон, приставка или компьютер (геймпад можно подключить посреди игры)
+local function updateInput()
+	currentInput = Logic.inputKind(UserInputService:GetLastInputType().Name)
+	app.setInput(currentInput)
+end
+UserInputService.LastInputTypeChanged:Connect(updateInput)
+updateInput()
+app.setTenFoot(GuiService:IsTenFootInterface())
 
 -- размер экрана: на телефоне экран компактнее (и при повороте тоже)
 local function updateViewport()
@@ -174,12 +209,19 @@ local function updateDots(view)
 end
 
 UserInputService.InputBegan:Connect(function(input, processed)
+	local key = input.KeyCode
+	-- ○ / B закрывает окно, даже когда в окне выделена кнопка (тогда Roblox помечает нажатие как обработанное)
+	if key == Enum.KeyCode.ButtonB and app.state.panel() then
+		app.close()
+		GuiService.SelectedObject = nil
+		return
+	end
 	if processed then
 		return
 	end
-	if input.KeyCode == Enum.KeyCode.Q then
+	if key == Enum.KeyCode.Q or key == Enum.KeyCode[Logic.DINO_KEYS.roar.gamepad] then
 		app.dinoAction("roar")
-	elseif input.KeyCode == Enum.KeyCode.F then
+	elseif key == Enum.KeyCode.F or key == Enum.KeyCode[Logic.DINO_KEYS.dash.gamepad] then
 		app.dinoAction("dash")
 	end
 end)

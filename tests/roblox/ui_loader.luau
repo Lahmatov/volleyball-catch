@@ -109,10 +109,10 @@ function UI.press(button)
 end
 
 -- новый экран с записью всех запросов к серверу и звуков
-function UI.new(answers)
+function UI.new(answers, extraDeps)
 	local calls, sounds = {}, {}
 	local t = 0
-	local app = UI.App.new({
+	local deps = {
 		ask = function(action, arg)
 			table.insert(calls, { action = action, arg = arg })
 			local a = answers and answers[action]
@@ -129,7 +129,14 @@ function UI.new(answers)
 			table.insert(calls, { action = "emote", arg = e.id })
 		end,
 		delay = function() end,
-	})
+		glyph = function(keyName)
+			return "rbxasset://glyph/" .. keyName
+		end,
+	}
+	for k, v in extraDeps or {} do
+		deps[k] = v
+	end
+	local app = UI.App.new(deps)
 	local ui = { app = app, calls = calls, sounds = sounds }
 	function ui.tick(dt)
 		t += dt
