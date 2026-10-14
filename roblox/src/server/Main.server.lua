@@ -140,6 +140,12 @@ local function moveOut(root: BasePart, from: Vector3, radius: number)
 	root.AssemblyLinearVelocity = Vector3.zero
 end
 
+-- игрок сейчас на поле (а не в Динопарке или на обби)?
+local function playing(player: Player): boolean
+	local root = getRoot(player)
+	return root ~= nil and onField(root.Position)
+end
+
 local function updateScore()
 	Net.set("Humans", humansScore)
 	Net.set("Dinos", dinoScore)
@@ -443,7 +449,7 @@ local function removeBoss(rewarded: boolean)
 	if rewarded and not boss.caughtAny then
 		for _, player in ipairs(Players:GetPlayers()) do
 			local s = states[player]
-			if s and not s.isDino then
+			if s and not s.isDino and playing(player) then
 				Progress.addCoins(player, 10, true)
 				Progress.badge(player, "boss")
 			end
@@ -505,6 +511,7 @@ RunService.Heartbeat:Connect(function(dt)
 			local pos = root.Position
 
 			if pos.Y < -40 then
+				dropEgg(player) -- иначе телепорт в центр поля засчитал бы яйцо как унесённое
 				teleport(player, (roundActive and not Lobby.contains(pos)) and lobby.fieldCFrame or lobby.spawnCFrame)
 			elseif pos.X < -FX / 2 - 10 and pos.Y < -3 then
 				teleport(player, lobby.obbyStart) -- упал в воду на обби
@@ -784,7 +791,7 @@ RunService.Heartbeat:Connect(function(dt)
 		local p = powerups[i]
 		for player, root in pairs(roots) do
 			local s = states[player]
-			if s.cagedUntil <= now and flatDist(root.Position, p.pos) < 4 and math.abs(root.Position.Y - p.pos.Y) < 6 then
+			if not s.isDino and s.cagedUntil <= now and flatDist(root.Position, p.pos) < 4 and math.abs(root.Position.Y - p.pos.Y) < 6 then
 				takePowerup(player, s, p, now)
 				p.model:Destroy()
 				table.remove(powerups, i)
@@ -921,7 +928,11 @@ end)
 -- ---------- кнопки с экрана ----------
 
 Net.Request.OnServerInvoke = function(player: Player, action: any, arg: any)
-	local s = st(player)
+	local s = states[player]
+	if not s then
+		-- игрок ещё не добавлен или уже ушёл: не создаём ему состояние заново
+		return { ok = false }
+	end
 	local now = os.clock()
 	if action == "roar" then
 		if not (s.isDino and roundActive) then
@@ -1105,7 +1116,14 @@ task.spawn(function()
 		local list = Players:GetPlayers()
 		dinoPlayer = pickDinoPlayer(list)
 		table.clear(lastCaught)
-		for _, player in ipairs(list) do
+		-- новый персонаж появляется не мгновенно: переносим на поле только после LoadCharacter
+		local function spawnOnField(player: Player, slot: number)
+			player:LoadCharacter()
+			if player.Parent then
+				teleport(player, lobby.fieldCFrame * CFrame.new(-24 + (slot - 1) * 12, 0, 0))
+			end
+		end
+		for i, player in ipairs(list) do
 			local old = states[player]
 			local s = newState()
 			if old then
@@ -1118,14 +1136,14 @@ task.spawn(function()
 				eggs.Value = 0
 			end
 			if player ~= dinoPlayer then
-				task.spawn(player.LoadCharacter, player)
+				task.spawn(spawnOnField, player, i)
 			end
 		end
 		if dinoPlayer then
 			local s = st(dinoPlayer)
 			s.isDino = true
 			s.dinoKind = Config.DINO_ORDER[math.random(#Config.DINO_ORDER)]
-			task.spawn(dinoPlayer.LoadCharacter, dinoPlayer) -- при появлении сразу станет динозавром
+			task.spawn(spawnOnField, dinoPlayer, table.find(list, dinoPlayer) or 1) -- при появлении сразу станет динозавром
 			Net.send(dinoPlayer, "role", { dino = true })
 			Net.send(dinoPlayer, "big", { text = "🦖 Ты динозавр! Лови людей!", seconds = 4 })
 			Net.send(dinoPlayer, "voice", "Ты динозавр! Лови людей!")
@@ -1134,9 +1152,6 @@ task.spawn(function()
 		end
 		Net.set("DinoPlayer", dinoPlayer and dinoPlayer.DisplayName or "")
 		task.wait(1)
-		for i, player in ipairs(Players:GetPlayers()) do
-			teleport(player, lobby.fieldCFrame * CFrame.new(-24 + (i - 1) * 12, 0, 0))
-		end
 
 		Net.big("Хватай яйца и убегай!", 3, "Хватай яйцо! Беги!")
 		roundEnd = os.clock() + Config.ROUND_TIME
@@ -1155,7 +1170,7 @@ task.spawn(function()
 		if humansScore > dinoScore then
 			text = "🏆 Кубок у людей!"
 			for player, s in pairs(states) do
-				if not s.isDino then
+				if not s.isDino and playing(player) then
 					giveCup(player)
 				end
 			end

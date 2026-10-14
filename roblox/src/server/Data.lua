@@ -69,6 +69,10 @@ function Data.load(player: Player)
 			task.wait(1)
 		end
 	end
+	if not player.Parent then
+		-- игрок ушёл, пока грузились данные: PlayerRemoving уже прошёл, профиль не нужен
+		return nil
+	end
 	profiles[player] = fill(saved)
 	canSave[player] = ok
 	return profiles[player]

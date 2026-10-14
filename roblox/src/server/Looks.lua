@@ -44,6 +44,14 @@ function Looks.applyCosmetics(character: Model, equipped: any, petKind: string?)
 	if not (head and root) then
 		return
 	end
+	-- точки следа живут на root, а не в DinoLooks — убираем старые, иначе они копятся
+	for _, name in ipairs({ "TrailTop", "TrailBottom" }) do
+		local a = root:FindFirstChild(name)
+		while a do
+			a:Destroy()
+			a = root:FindFirstChild(name)
+		end
+	end
 	local looks = Instance.new("Folder")
 	looks.Name = "DinoLooks"
 

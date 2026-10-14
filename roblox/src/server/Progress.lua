@@ -162,6 +162,15 @@ local function giveItem(player: Player, itemId: string): boolean
 	return true
 end
 
+-- вещь в подарок; если она уже есть — +50 монеток вместо неё
+local function giveItemOrCoins(player: Player, itemId: string, dupMsg: string): string
+	if giveItem(player, itemId) then
+		return Config.shopItem(itemId).name .. "!"
+	end
+	Data.get(player).coins += 50
+	return dupMsg
+end
+
 -- ---------- действия с экрана игрока ----------
 
 local handlers = {}
@@ -314,12 +323,7 @@ function handlers.spin(player: Player)
 			Progress.badge(player, "rainbow_egg")
 		end
 	else
-		if giveItem(player, seg.item) then
-			msg = Config.shopItem(seg.item).name .. "!"
-		else
-			p.coins += 50
-			msg = "У тебя это уже есть, держи +50 🪙"
-		end
+		msg = giveItemOrCoins(player, seg.item, "У тебя это уже есть, держи +50 🪙")
 	end
 	Progress.sync(player)
 	return { ok = true, index = index, msg = msg }
@@ -348,12 +352,7 @@ function handlers.code(player: Player, text: any)
 		p.eggs[r.egg] += 1
 		msg = Config.EGGS[r.egg].name .. " " .. Config.EGGS[r.egg].icon
 	elseif r.item then
-		if giveItem(player, r.item) then
-			msg = Config.shopItem(r.item).name .. "!"
-		else
-			p.coins += 50
-			msg = "+50 🪙"
-		end
+		msg = giveItemOrCoins(player, r.item, "+50 🪙")
 	end
 	Net.sound(player, "coin")
 	Progress.sync(player)
