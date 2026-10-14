@@ -1,4 +1,4 @@
--- Строит поле на каждый тайм (4 карты), а также постоянное лобби: спавн, гнездо и обби.
+-- Строит поле на каждый тайм: 4 карты, круги, динозавры, яйца, кусты.
 local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -67,60 +67,6 @@ function Arena.freePos(margin: number?): Vector3
 		end
 	end
 	return Vector3.new(math.random(-120, 120), G, 75)
-end
-
--- ---------- лобби: спавн, гнездо, обби ----------
-
-function Arena.buildLobby()
-	local folder = Instance.new("Folder")
-	folder.Name = "DinoLobby"
-	folder.Parent = Workspace
-
-	local spawn = Instance.new("SpawnLocation")
-	spawn.Anchored = true
-	spawn.Size = Vector3.new(10, 1, 10)
-	spawn.CFrame = CFrame.new(0, G, 0)
-	spawn.Color = Color3.fromRGB(47, 111, 216)
-	spawn.Material = Enum.Material.SmoothPlastic
-	spawn.Duration = 0
-	spawn.Parent = folder
-
-	local _, nestPrompt = Models.nest(folder, Vector3.new(16, G, 0))
-
-	local padPos = Vector3.new(-16, G, 0)
-	local pad = Models.cylinder(folder, 0.4, 6, CFrame.new(padPos + Vector3.new(0, 0.2, 0)), Color3.fromRGB(150, 90, 230), Enum.Material.Neon)
-	Models.label(pad, "🏃 ОББИ", 4, Color3.fromRGB(220, 190, 255), 80)
-
-	-- обби за западной стеной, над голубой «водой»
-	local ox = -FX / 2 - 45
-	local water = Models.part(folder, Vector3.new(70, 1, FZ + 40), CFrame.new(ox, -12, 0), Color3.fromRGB(70, 180, 230), Enum.Material.Neon)
-	water.Transparency = 0.3
-	local start = Models.part(folder, Vector3.new(12, 1, 12), CFrame.new(ox, 2, -75), Color3.fromRGB(150, 90, 230))
-	start.CanCollide = true
-	Models.label(start, "Прыгай по островкам!", 6, Color3.fromRGB(220, 190, 255), 80)
-	local last = Vector3.new(ox, 2, -75)
-	for i = 1, 14 do
-		local pos = Vector3.new(ox + ((i % 3) - 1) * 4, 2 + i * 1.2, -75 + i * 8)
-		local size = i % 4 == 0 and Vector3.new(3.5, 1, 3.5) or Vector3.new(5, 1, 5)
-		local p = Models.part(folder, size, CFrame.new(pos), Color3.fromHSV(i / 14, 0.6, 1))
-		p.CanCollide = true
-		last = pos
-	end
-	local finishPos = last + Vector3.new(0, 1, 10)
-	local finish = Models.part(folder, Vector3.new(12, 1, 12), CFrame.new(finishPos), Color3.fromRGB(242, 194, 48), Enum.Material.Foil)
-	finish.CanCollide = true
-	Models.label(finish, "🏁 ФИНИШ", 6, Color3.fromRGB(255, 230, 120), 120)
-
-	return {
-		folder = folder,
-		spawnCFrame = CFrame.new(0, G + 4, 0),
-		nestPrompt = nestPrompt,
-		nestPos = Vector3.new(16, G, 0),
-		padPos = padPos,
-		obbyStart = CFrame.new(ox, 6, -75),
-		obbyX = ox,
-		finishPos = finishPos,
-	}
 end
 
 -- ---------- поле на один тайм ----------
@@ -227,6 +173,9 @@ function Arena.buildRound(themeId: string, event: string)
 		model.Parent = folder
 		circle.dino = model
 		circle.colorParts = colorParts
+		circle.bubble = Models.bubble(colorParts[2], 5)
+		circle.nextChat = os.clock() + math.random(2, 12)
+		circle.chatUntil = 0
 		circle.height = height
 		circle.allParts = {}
 		for _, d in ipairs(model:GetDescendants()) do

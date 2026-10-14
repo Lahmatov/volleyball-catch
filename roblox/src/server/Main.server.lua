@@ -16,6 +16,7 @@ local Models = require(script.Parent.Models)
 local Arena = require(script.Parent.Arena)
 local Looks = require(script.Parent.Looks)
 local Progress = require(script.Parent.Progress)
+local Lobby = require(script.Parent.Lobby)
 
 local R, ZONE, G = Config.CIRCLE_RADIUS, Config.ZONE_RADIUS, Config.GROUND_Y
 local FX, FZ = Config.FIELD_X, Config.FIELD_Z
@@ -24,7 +25,11 @@ local event = Config.currentEvent()
 Progress.event = event
 Net.set("Event", event)
 
-local lobby = Arena.buildLobby()
+local setScale: (Player, number) -> ()
+local lobby = Lobby.build()
+local fxFolder = Instance.new("Folder")
+fxFolder.Name = "DinoFX"
+fxFolder.Parent = workspace
 local arena = Arena.buildRound(Config.THEMES[1].id, event)
 Net.set("Map", Config.THEMES[1].icon .. " " .. Config.THEMES[1].name)
 Net.set("Theme", Config.THEMES[1].id)
@@ -63,6 +68,10 @@ local function newState()
 		obbyAt = -1000,
 		lavaAt = 0,
 		bushToastAt = 0,
+		portalToastAt = 0,
+		fartAt = 0,
+		mushroomAt = 0,
+		scaleUntil = 0,
 	}
 end
 
@@ -254,6 +263,20 @@ local function catchPlayer(prey: Player, root: BasePart, from: Vector3, outRadiu
 	end
 	s.cagedUntil = now + Config.CAGE_TIME
 	s.cage = Models.cage(Vector3.new(root.Position.X, G, root.Position.Z), arena.folder)
+	local head = prey.Character and prey.Character:FindFirstChild("Head") :: BasePart?
+	if head then
+		local stars = Models.label(head, "😵‍💫 ⭐ ⭐", 3, Color3.new(1, 1, 1), 80)
+		local bb = stars.Parent :: BillboardGui
+		bb.Parent = s.cage
+		task.spawn(function()
+			local t = 0
+			while bb.Parent do
+				t += 0.1
+				bb.StudsOffset = Vector3.new(math.sin(t * 6) * 0.8, 3, math.cos(t * 6) * 0.8)
+				task.wait(0.1)
+			end
+		end)
+	end
 	for _, c in ipairs(arena.circles) do
 		if c.occupant == prey then
 			c.occupant = nil
@@ -262,7 +285,7 @@ local function catchPlayer(prey: Player, root: BasePart, from: Vector3, outRadiu
 
 	Net.sound(prey, "caught")
 	Net.send(prey, "voice", "Ой! Поймали!")
-	Net.toast(prey, "🔒 Тебя поймали! Друг может спасти, или подожди " .. Config.CAGE_TIME .. " секунд")
+	Net.toast(prey, "😵‍💫 Ой! Голова кружится! Друг может спасти, или подожди " .. Config.CAGE_TIME .. " секунд")
 	Net.all("toast", catcherName .. " поймал " .. prey.DisplayName .. "! +1 динозаврам")
 	if catcher then
 		local coins = Progress.addCoins(catcher, 5, true)
@@ -378,7 +401,7 @@ end
 -- ---------- Ти-Рекс ----------
 
 local function spawnBoss(now: number)
-	local model, _, height = Models.dino(Color3.fromRGB(120, 95, 70), Color3.fromRGB(70, 50, 35), 2.4, {
+	local model, bossParts, height = Models.dino(Color3.fromRGB(120, 95, 70), Color3.fromRGB(70, 50, 35), 2.4, {
 		name = "Ти-Рекс",
 		label = "ТИ-РЕКС",
 		labelColor = Color3.fromRGB(255, 90, 60),
@@ -387,7 +410,16 @@ local function spawnBoss(now: number)
 	local pos = Vector3.new(0, G, -FZ / 2 + 12)
 	model:PivotTo(CFrame.new(pos + Vector3.new(0, height, 0)))
 	model.Parent = arena.folder
-	boss = { model = model, height = height, pos = pos, face = Vector3.new(0, 0, 1), untilT = now + Config.BOSS_TIME, caughtAny = false }
+	boss = {
+		model = model,
+		height = height,
+		pos = pos,
+		face = Vector3.new(0, 0, 1),
+		untilT = now + Config.BOSS_TIME,
+		caughtAny = false,
+		bubble = Models.bubble(bossParts[2], 9),
+		nextChat = now + 1,
+	}
 	Net.big("🦖 ТИ-РЕКС! БЕГИ!", 3, "Ти-Рекс! Беги!")
 	Net.all("shake", 1)
 	Net.sound(nil, "roar")
@@ -464,7 +496,7 @@ RunService.Heartbeat:Connect(function(dt)
 			local pos = root.Position
 
 			if pos.Y < -40 then
-				teleport(player, lobby.spawnCFrame)
+				teleport(player, (roundActive and not Lobby.contains(pos)) and lobby.fieldCFrame or lobby.spawnCFrame)
 			elseif pos.X < -FX / 2 - 10 and pos.Y < -6 then
 				teleport(player, lobby.obbyStart) -- упал в воду на обби
 			end
@@ -485,11 +517,20 @@ RunService.Heartbeat:Connect(function(dt)
 				end
 				teleport(player, lobby.spawnCFrame)
 			end
+			if flatDist(pos, lobby.gamePortalPos) < 4 and pos.Y < G + 6 then
+				if roundActive then
+					teleport(player, lobby.fieldCFrame * CFrame.new(math.random(-20, 20), 0, 0))
+					Net.toast(player, "▶ Беги за яйцами!")
+				elseif now - s.portalToastAt > 4 then
+					s.portalToastAt = now
+					Net.toast(player, "▶ Портал откроется, когда начнётся игра")
+				end
+			end
 			for _, l in ipairs(arena.lava) do
 				if flatDist(pos, l.pos) < l.radius and pos.Y < G + 5 and now - s.lavaAt > 1 then
 					s.lavaAt = now
 					dropEgg(player)
-					teleport(player, lobby.spawnCFrame)
+					teleport(player, lobby.fieldCFrame)
 					Net.toast(player, "🔥 Ой, горячо! Обходи лаву")
 					Net.sound(player, "caught")
 				end
@@ -644,8 +685,23 @@ RunService.Heartbeat:Connect(function(dt)
 		local body = c.dinoPos + Vector3.new(0, c.height + bob, 0)
 		c.dino:PivotTo(CFrame.lookAt(body, body + c.dinoFace))
 
+		-- динозавры болтают
+		if now >= c.nextChat then
+			c.nextChat = now + math.random(6, 14)
+			local list = chasing and Config.DINO_PHRASES.chase or Config.DINO_PHRASES.idle
+			c.bubble.Text = list[math.random(#list)]
+			c.chatUntil = now + 2.5
+		elseif c.chatUntil > 0 and now > c.chatUntil then
+			c.bubble.Text = ""
+			c.chatUntil = 0
+		end
+
 		if prey and flatDist(roots[prey].Position, c.dinoPos) < Config.CATCH_DISTANCE then
-			catchPlayer(prey, roots[prey], c.center, ZONE + 6, c.def.name .. " динозавр", nil)
+			if catchPlayer(prey, roots[prey], c.center, ZONE + 6, c.def.name .. " динозавр", nil) then
+				local list = Config.DINO_PHRASES.catch
+				c.bubble.Text = list[math.random(#list)]
+				c.chatUntil = now + 2.5
+			end
 		end
 	end
 
@@ -692,6 +748,11 @@ RunService.Heartbeat:Connect(function(dt)
 			end
 			local body = boss.pos + Vector3.new(0, boss.height + (moving and math.abs(math.sin(now * 6)) or 0), 0)
 			boss.model:PivotTo(CFrame.lookAt(body, body + boss.face))
+			if now >= boss.nextChat then
+				boss.nextChat = now + 4
+				local list = Config.DINO_PHRASES.boss
+				boss.bubble.Text = list[math.random(#list)]
+			end
 			if best and bestD < 8 then
 				if catchPlayer(best, roots[best], boss.pos, nil, "🦖 Ти-Рекс", nil) then
 					boss.caughtAny = true
@@ -793,6 +854,58 @@ lobby.nestPrompt.Triggered:Connect(function(player)
 	Net.send(player, "panel", "pets")
 end)
 
+-- ---------- смешное в Динопарке ----------
+
+local SCALES = { "BodyHeightScale", "BodyWidthScale", "BodyDepthScale", "HeadScale" }
+setScale = function(player: Player, factor: number)
+	local _, hum = getRoot(player)
+	if not hum then
+		return
+	end
+	for _, name in ipairs(SCALES) do
+		local v = hum:FindFirstChild(name) :: NumberValue?
+		if v then
+			v.Value = factor
+		end
+	end
+	task.delay(0.2, applyLooks, player)
+end
+
+local statueToken = 0
+lobby.statuePrompt.Triggered:Connect(function(player)
+	statueToken += 1
+	local my = statueToken
+	local list = Config.DINO_PHRASES.statue
+	local phrase = list[math.random(#list)]
+	local st0 = lobby.statue
+	st0.bubble.Text = phrase
+	local snd = Instance.new("Sound")
+	local which = phrase:find("Пук") and Config.SOUNDS.fart or Config.SOUNDS.boing
+	snd.SoundId = which.id
+	snd.PlaybackSpeed = which.speed
+	snd.Volume = 1
+	snd.Parent = st0.model.PrimaryPart
+	snd:Play()
+	task.delay(3, function()
+		snd:Destroy()
+	end)
+	task.spawn(function()
+		local base = st0.pos + Vector3.new(0, st0.height, 0)
+		local look = CFrame.lookAt(base, base + Vector3.new(0.4, 0, 1)).Rotation
+		for i = 1, 10 do
+			local y = math.sin(i / 10 * math.pi) * 3
+			st0.model:PivotTo(CFrame.new(base + Vector3.new(0, y, 0)) * look)
+			task.wait(0.04)
+		end
+		st0.model:PivotTo(CFrame.new(base) * look)
+	end)
+	task.delay(3, function()
+		if my == statueToken then
+			st0.bubble.Text = ""
+		end
+	end)
+end)
+
 -- ---------- кнопки с экрана ----------
 
 Net.Request.OnServerInvoke = function(player: Player, action: any, arg: any)
@@ -830,6 +943,61 @@ Net.Request.OnServerInvoke = function(player: Player, action: any, arg: any)
 		s.dashUntil = now + 0.6
 		Net.sound(player, "swoosh")
 		return { ok = true, cooldown = 5 }
+	elseif action == "fart" then
+		local root = getRoot(player)
+		if root and now - s.fartAt > 2 then
+			s.fartAt = now
+			local cloud = Models.part(fxFolder, Vector3.new(1, 1, 1), CFrame.new(root.Position - Vector3.new(0, 1.5, 0)), Color3.new(1, 1, 1))
+			cloud.Transparency = 1
+			local puff = Instance.new("ParticleEmitter")
+			puff.Color = ColorSequence.new(Color3.fromRGB(170, 210, 60), Color3.fromRGB(120, 160, 40))
+			puff.Size = NumberSequence.new(1.5, 5)
+			puff.Transparency = NumberSequence.new(0.2, 1)
+			puff.Lifetime = NumberRange.new(1.2, 1.8)
+			puff.Speed = NumberRange.new(2, 5)
+			puff.SpreadAngle = Vector2.new(180, 180)
+			puff.Rate = 80
+			puff.Parent = cloud
+			Models.label(cloud, "ПУК! 💨", 4, Color3.fromRGB(190, 240, 90), 80)
+			local snd = Instance.new("Sound")
+			snd.SoundId = Config.SOUNDS.fart.id
+			snd.PlaybackSpeed = Config.SOUNDS.fart.speed
+			snd.Volume = 1
+			snd.RollOffMaxDistance = 80
+			snd.Parent = cloud
+			snd:Play()
+			task.delay(0.4, function()
+				puff.Enabled = false
+			end)
+			task.delay(2.5, function()
+				cloud:Destroy()
+			end)
+			Net.toast(player, "💨 Хи-хи!")
+			for _, other in ipairs(Players:GetPlayers()) do
+				local r2 = getRoot(other)
+				if other ~= player and r2 and flatDist(r2.Position, root.Position) < 25 then
+					Net.toast(other, "Фу-у-у! " .. player.DisplayName .. " пукнул 😂")
+				end
+			end
+		end
+		return { ok = true }
+	elseif action == "mushroom" then
+		local root = getRoot(player)
+		if not root or not Lobby.contains(root.Position) or now - s.mushroomAt < 4 or s.isDino then
+			return { ok = false }
+		end
+		s.mushroomAt = now
+		local factor = arg == "big" and 2.2 or 0.45
+		setScale(player, factor)
+		s.scaleUntil = now + 12
+		Net.sound(player, "boing")
+		Net.toast(player, arg == "big" and "🍄 Ты ВЕЛИКАН! Топ-топ!" or "🍄 Ты малыш-малышок! Пи-пи-пи!")
+		task.delay(12, function()
+			if states[player] == s and os.clock() >= s.scaleUntil - 0.05 then
+				setScale(player, 1)
+			end
+		end)
+		return { ok = true }
 	elseif action == "tongue" then
 		if player.Character and not s.isDino then
 			Looks.tongue(player.Character)
@@ -844,6 +1012,10 @@ end
 task.spawn(function()
 	while true do
 		Net.set("Status", status)
+		lobby.boardStatus.Text = roundActive and "Идёт игра! Прыгай в зелёный портал ▶" or (status ~= "" and status or "Скоро игра!")
+		for _, tile in ipairs(lobby.disco) do
+			tile.Color = Color3.fromHSV(math.random(), 0.65, 1)
+		end
 		Net.set("TimeLeft", roundActive and math.max(0, math.ceil(roundEnd - os.clock())) or -1)
 		task.wait(0.2)
 	end
@@ -949,6 +1121,9 @@ task.spawn(function()
 		end
 		Net.set("DinoPlayer", dinoPlayer and dinoPlayer.DisplayName or "")
 		task.wait(1)
+		for i, player in ipairs(Players:GetPlayers()) do
+			teleport(player, lobby.fieldCFrame * CFrame.new(-24 + (i - 1) * 12, 0, 0))
+		end
 
 		Net.big("Хватай яйца и убегай!", 3, "Хватай яйцо! Беги!")
 		roundEnd = os.clock() + Config.ROUND_TIME
@@ -986,14 +1161,20 @@ task.spawn(function()
 			Progress.sync(player)
 		end
 
+		showTrophy(text, 7)
 		if dinoPlayer and dinoPlayer.Parent then
 			local dp = dinoPlayer
 			st(dp).isDino = false
 			Net.send(dp, "role", { dino = false })
-			task.spawn(dp.LoadCharacter, dp)
+			task.spawn(dp.LoadCharacter, dp) -- появится в Динопарке
+		end
+		for _, player in ipairs(Players:GetPlayers()) do
+			if player ~= dinoPlayer then
+				teleport(player, lobby.spawnCFrame * CFrame.new(math.random(-6, 6), 0, math.random(-4, 4)))
+			end
 		end
 		dinoPlayer = nil
 		Net.set("DinoPlayer", "")
-		showTrophy(text, 7)
+		Net.big("🦖 Добро пожаловать в Динопарк!", 3)
 	end
 end)

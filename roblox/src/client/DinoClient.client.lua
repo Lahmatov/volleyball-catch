@@ -5,6 +5,7 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
+local CollectionService = game:GetService("CollectionService")
 
 local player = Players.LocalPlayer
 local Config = require(ReplicatedStorage:WaitForChild("DinoShared"):WaitForChild("Config"))
@@ -69,7 +70,13 @@ local function label(parent: Instance, props: { [string]: any }): TextLabel
 	return t
 end
 
+local playJingle: () -> ()
+
 local function playSound(name: string)
+	if name == "win" then
+		playJingle()
+		return
+	end
 	local def = Config.SOUNDS[name]
 	if not def then
 		return
@@ -852,8 +859,8 @@ function builders.codes()
 end
 
 local function playEmote(emote)
-	if emote.id == "tongue" then
-		ask("tongue")
+	if emote.id == "tongue" or emote.id == "fart" then
+		ask(emote.id)
 		return
 	end
 	local char = player.Character
@@ -927,11 +934,15 @@ local side = make("Frame", {
 })
 make("UIGridLayout", { CellSize = UDim2.new(0, 64, 0, 64), CellPadding = UDim2.new(0, 6, 0, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = side })
 local dots = {}
-local function sideButton(index: number, icon: string, caption: string, color: Color3, panelName: string)
+local function sideButton(index: number, icon: string, caption: string, color: Color3, panelName: string, onClick: (() -> ())?)
 	local b = button(side, { LayoutOrder = index, BackgroundColor3 = color, Text = "" }, function()
-		openPanel(panelName)
+		if onClick then
+			onClick()
+		else
+			openPanel(panelName)
+		end
 	end)
-	label(b, { Size = UDim2.new(1, 0, 0.68, 0), Text = icon })
+	local iconLabel = label(b, { Name = "Icon", Size = UDim2.new(1, 0, 0.68, 0), Text = icon })
 	label(b, { Position = UDim2.fromScale(0, 0.68), Size = UDim2.new(1, 0, 0.32, 0), Text = caption })
 	local dot = make("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -944,6 +955,7 @@ local function sideButton(index: number, icon: string, caption: string, color: C
 	corner(dot, UDim.new(1, 0))
 	stroke(dot, 2, C.cream)
 	dots[panelName] = dot
+	return iconLabel
 end
 sideButton(1, "🐣", "Питомцы", C.green, "pets")
 sideButton(2, "🛒", "Магазин", C.gold, "shop")
@@ -952,6 +964,13 @@ sideButton(4, "🎡", "Колесо", C.purple, "wheel")
 sideButton(5, "🏅", "Значки", C.blue, "badges")
 sideButton(6, "🔑", "Коды", C.paper, "codes")
 sideButton(7, "😀", "Эмоции", C.cream, "emotes")
+local musicOn = true
+local musicIcon: TextLabel
+musicIcon = sideButton(8, "🎵", "Музыка", C.paper, "music", function()
+	musicOn = not musicOn
+	musicIcon.Text = musicOn and "🎵" or "🔇"
+	toast(musicOn and "🎵 Музыка включена" or "🔇 Музыка выключена")
+end)
 
 -- ---------- кнопки динозавра ----------
 
@@ -1005,6 +1024,212 @@ local function setDino(on: boolean)
 	dinoPad.Visible = on
 	dinoBanner.Visible = on
 end
+
+
+-- ---------- музыка ----------
+-- Мелодии играются нотами из встроенного звука Roblox, поэтому чужие аудио не нужны.
+
+local NOTE_INDEX = { C = 0, D = 2, E = 4, F = 5, G = 7, A = 9, B = 11 }
+local function parseLine(line: string): { number | boolean }
+	local out = {}
+	for tok in line:gmatch("%S+") do
+		if tok == "-" then
+			table.insert(out, false)
+		else
+			local letter, acc, octave = tok:match("^(%a)([#b]?)(%d)$")
+			local n = 12 * (tonumber(octave) :: number + 1) + NOTE_INDEX[letter] + (acc == "#" and 1 or acc == "b" and -1 or 0)
+			table.insert(out, n)
+		end
+	end
+	return out
+end
+
+local SONGS = {
+	-- весёлая прыгучая для Динопарка
+	lobby = {
+		bpm = 132,
+		melody = parseLine("C5 - E5 G5 C6 - G5 E5 F5 - A5 F5 G5 - - - E5 - G5 E5 D5 - C5 D5 E5 - D5 B4 C5 - - -"),
+		bass = parseLine("C3 - G3 - C3 - G3 - F3 - C4 - G3 - D3 - C3 - G3 - A3 - E3 - F3 - G3 - C3 - G3 -"),
+	},
+	-- быстрая приключенческая для игры
+	round = {
+		bpm = 152,
+		melody = parseLine("A4 C5 E5 A5 G5 E5 C5 E5 F5 A5 C6 A5 G5 E5 D5 E5 A4 C5 E5 A5 B5 A5 G5 E5 F5 E5 D5 B4 A4 - - -"),
+		bass = parseLine("A2 - A3 - A2 - A3 - F2 - F3 - F2 - F3 - C3 - C4 - G2 - G3 - E2 - E3 - A2 - A2 -"),
+	},
+	-- тревожная, когда приходит Ти-Рекс
+	boss = {
+		bpm = 176,
+		melody = parseLine("E5 - E5 F5 E5 - D#5 - E5 - G5 - F5 - D#5 -"),
+		bass = parseLine("E2 E3 E2 E3 E2 E3 F2 F3 E2 E3 E2 E3 G2 G3 F2 F3"),
+	},
+}
+local JINGLE = parseLine("C5 E5 G5 C6 - G5 C6 C6")
+
+local notePool = {}
+for i = 1, 12 do
+	local snd = Instance.new("Sound")
+	snd.SoundId = Config.SOUNDS.note.id
+	snd.Parent = SoundService
+	notePool[i] = snd
+end
+local poolIndex = 0
+local function playNote(midi: number, volume: number)
+	poolIndex = poolIndex % #notePool + 1
+	local snd = notePool[poolIndex]
+	snd.PlaybackSpeed = 2 ^ ((midi - 72) / 12)
+	snd.Volume = volume
+	snd.TimePosition = 0
+	snd:Play()
+end
+
+local jinglePlaying = false
+playJingle = function()
+	if jinglePlaying then
+		return
+	end
+	jinglePlaying = true
+	task.spawn(function()
+		for _, n in ipairs(JINGLE) do
+			if n then
+				playNote(n :: number, Config.MUSIC_VOLUME * 1.6)
+			end
+			task.wait(0.15)
+		end
+		task.wait(0.4)
+		jinglePlaying = false
+	end)
+end
+
+local function songName(): string
+	if remotes:GetAttribute("Boss") then
+		return "boss"
+	end
+	return (remotes:GetAttribute("TimeLeft") or -1) >= 0 and "round" or "lobby"
+end
+
+task.spawn(function()
+	local playing: string? = nil
+	local custom: Sound? = nil
+	local step = 0
+	local nextT = os.clock()
+	while true do
+		local name = musicOn and songName() or nil
+		if name ~= playing then
+			playing = name
+			step = 0
+			if custom then
+				custom:Destroy()
+				custom = nil
+			end
+			local id = name and Config.MUSIC[name] or ""
+			if id ~= "" then
+				local snd = Instance.new("Sound")
+				snd.SoundId = id
+				snd.Looped = true
+				snd.Volume = Config.MUSIC_VOLUME
+				snd.Parent = SoundService
+				snd:Play()
+				custom = snd
+			end
+		end
+		local song = name and SONGS[name]
+		if song and not custom and not jinglePlaying then
+			step += 1
+			local m = song.melody[(step - 1) % #song.melody + 1]
+			local b = song.bass[(step - 1) % #song.bass + 1]
+			if m then
+				playNote(m :: number, Config.MUSIC_VOLUME)
+			end
+			if b then
+				playNote(b :: number, Config.MUSIC_VOLUME * 0.8)
+			end
+		end
+		nextT += song and 60 / song.bpm / 2 or 0.25
+		local wait = nextT - os.clock()
+		if wait < -0.5 then
+			nextT = os.clock()
+			wait = 0
+		end
+		task.wait(math.max(0, wait))
+	end
+end)
+
+-- ---------- шалости в Динопарке: батуты, бананы, горка, пукалки, грибы ----------
+
+local BOUNCE_WORDS = { "Уиии! 🤸", "Выше неба! ☁️", "Я птица! 🐦", "Йу-ху! 🚀" }
+local cool = { bounce = 0, slip = 0, fart = 0, mushroom = 0, slide = 0 }
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+local function near(root: BasePart, p: BasePart, radius: number, height: number): boolean
+	local d = Vector3.new(root.Position.X - p.Position.X, 0, root.Position.Z - p.Position.Z).Magnitude
+	return d < radius and math.abs(root.Position.Y - p.Position.Y) < height
+end
+
+local function slip(hum: Humanoid, root: BasePart)
+	cool.slip = os.clock() + 3
+	playSound("slip")
+	toast("Ой! Банан! 🍌😂")
+	hum.PlatformStand = true
+	root.AssemblyLinearVelocity = root.CFrame.LookVector * 25 + Vector3.new(0, 18, 0)
+	root.AssemblyAngularVelocity = root.CFrame.RightVector * 10
+	task.delay(1.3, function()
+		hum.PlatformStand = false
+		hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+	end)
+end
+
+RunService.Heartbeat:Connect(function()
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not (char and hum and root) or hum.Health <= 0 then
+		return
+	end
+	local now = os.clock()
+	for _, p in ipairs(CollectionService:GetTagged("Trampoline")) do
+		if now > cool.bounce and near(root, p, 3.4, 5) then
+			cool.bounce = now + 0.5
+			local v = root.AssemblyLinearVelocity
+			root.AssemblyLinearVelocity = Vector3.new(v.X, 95, v.Z)
+			playSound("boing")
+			if math.random() < 0.3 then
+				toast(BOUNCE_WORDS[math.random(#BOUNCE_WORDS)])
+			end
+		end
+	end
+	for _, p in ipairs(CollectionService:GetTagged("Banana")) do
+		if now > cool.slip and near(root, p, 1.8, 4) then
+			slip(hum, root)
+		end
+	end
+	for _, p in ipairs(CollectionService:GetTagged("Fart")) do
+		if now > cool.fart and near(root, p, 2.4, 4) then
+			cool.fart = now + 2.5
+			task.spawn(ask, "fart")
+		end
+	end
+	for _, p in ipairs(CollectionService:GetTagged("Mushroom")) do
+		if now > cool.mushroom and near(root, p, 3, 5) then
+			cool.mushroom = now + 5
+			task.spawn(ask, "mushroom", p:GetAttribute("Kind"))
+		end
+	end
+	rayParams.FilterDescendantsInstances = { char }
+	local hit = workspace:Raycast(root.Position, Vector3.new(0, -5, 0), rayParams)
+	if hit and CollectionService:HasTag(hit.Instance, "Slide") then
+		local dir = hit.Instance:GetAttribute("Dir")
+		if typeof(dir) == "Vector3" then
+			root.AssemblyLinearVelocity = dir * 55
+		end
+		if now > cool.slide then
+			cool.slide = now + 3
+			toast("Уииии! 🛝")
+			playSound("swoosh")
+		end
+	end
+end)
 
 -- ---------- данные и события с сервера ----------
 

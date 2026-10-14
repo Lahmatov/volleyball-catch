@@ -57,6 +57,38 @@ function Models.label(adornee: BasePart, text: string, offsetY: number, color: C
 	return t
 end
 
+-- Облачко со словами над головой. Пустой текст — облачко спрятано.
+function Models.bubble(adornee: BasePart, offsetY: number): TextLabel
+	local bb = Instance.new("BillboardGui")
+	bb.Name = "Bubble"
+	bb.Size = UDim2.new(0, 220, 0, 50)
+	bb.StudsOffset = Vector3.new(0, offsetY, 0)
+	bb.AlwaysOnTop = true
+	bb.MaxDistance = 90
+	bb.Enabled = false
+	bb.Adornee = adornee
+	local t = Instance.new("TextLabel")
+	t.Size = UDim2.fromScale(1, 1)
+	t.BackgroundColor3 = Color3.new(1, 1, 1)
+	t.TextColor3 = Color3.fromRGB(31, 42, 23)
+	t.Font = Enum.Font.FredokaOne
+	t.TextScaled = true
+	t.Text = ""
+	t.Parent = bb
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, 14)
+	c.Parent = t
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft = UDim.new(0, 8)
+	pad.PaddingRight = UDim.new(0, 8)
+	pad.Parent = t
+	bb.Parent = adornee
+	t:GetPropertyChangedSignal("Text"):Connect(function()
+		bb.Enabled = t.Text ~= ""
+	end)
+	return t
+end
+
 -- Приклеивает все детали модели к root: модель становится одним целым и не мешает ходить.
 function Models.weldTo(model: Instance, root: BasePart)
 	for _, d in ipairs(model:GetDescendants()) do

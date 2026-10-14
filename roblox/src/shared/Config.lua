@@ -113,6 +113,7 @@ Config.EMOTES = {
 	{ id = "wave", name = "Привет", icon = "👋", anim = "rbxassetid://507770239" },
 	{ id = "cheer", name = "Ура", icon = "🙌", anim = "rbxassetid://507770677" },
 	{ id = "tongue", name = "Язык", icon = "😛" },
+	{ id = "fart", name = "Пук", icon = "💨" },
 }
 
 -- Звуки встроены в Roblox. Любой можно заменить на свой "rbxassetid://...".
@@ -125,6 +126,24 @@ Config.SOUNDS = {
 	jump = { id = "rbxasset://sounds/action_jump.mp3", speed = 1 },
 	swoosh = { id = "rbxasset://sounds/swoosh.wav", speed = 1 },
 	win = { id = "rbxasset://sounds/victory.wav", speed = 1 },
+	fart = { id = "rbxasset://sounds/uuhhh.mp3", speed = 0.35 },
+	boing = { id = "rbxasset://sounds/action_jump.mp3", speed = 1.6 },
+	slip = { id = "rbxasset://sounds/swoosh.wav", speed = 0.7 },
+	note = { id = "rbxasset://sounds/electronicpingshort.wav", speed = 1 },
+}
+
+-- Музыка. По умолчанию играют встроенные мелодии (их «играет» сам скрипт нотами).
+-- Можно вставить свою музыку из Creator Store: например lobby = "rbxassetid://1234567890".
+Config.MUSIC = { lobby = "", round = "", boss = "" }
+Config.MUSIC_VOLUME = 0.35
+
+-- что болтают динозавры
+Config.DINO_PHRASES = {
+	idle = { "Где мои яйца?", "Скучно-о-о...", "Хочу обнимашки!", "Апчхи! 🤧", "Ик! 😳", "Я самый красивый 😎", "Мама, я голодный!", "Хр-р-р... 💤", "Кто съел мой бутерброд?", "Ля-ля-ля 🎵" },
+	chase = { "Иди сюда!", "Отдай яйцо!", "Ам-ням-ням!", "Догоню-у-у!", "Стой! Я только понюхать!", "У меня лапки! 🐾" },
+	catch = { "АМ! Попался! 😋", "Хе-хе-хе!", "Моё яйцо! 🥚", "Вкусненький! 😋" },
+	boss = { "Я ТИ-РЕКС! РРР!", "Кто хочет обнимашки?!", "У меня маленькие ручки! 🦖", "Топ-топ-топ!" },
+	statue = { "Апчхи! 🤧", "Мур-мур 🥰", "Ик! 😳", "Хи-хи, щекотно! 😆", "РРР! ...шучу 😜", "Буэ! Кто ел капусту? 🤢", "Пук! 💨 Ой, это не я!", "Я ем только брокколи 🥦" },
 }
 
 function Config.currentEvent(): string
