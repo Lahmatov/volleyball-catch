@@ -4,10 +4,11 @@
   "type": "module",
   "scripts": {
     "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "lune run tests/roblox/run && lune run tests/roblox/ui",
+    "test:unit": "lune run tests/roblox/run && lune run tests/roblox/ui && python3 -m unittest discover -s tests/tools",
     "test:e2e": "node tests/web/run.mjs && lune run tests/roblox/e2e",
     "test:roblox-cloud": "python3 tests/cloud/run_in_roblox.py",
-    "build": "cd roblox && rojo build -o DinoEggCatch.rbxlx"
+    "build": "cd roblox && rojo build -o DinoEggCatch.rbxlx",
+    "publish": "python3 tools/publish.py"
   },
   "devDependencies": {
     "playwright": "1.56.1"

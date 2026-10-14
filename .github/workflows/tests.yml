@@ -54,3 +54,33 @@ jobs:
       - name: Ключа нет — пропускаем
         if: env.ROBLOX_API_KEY == ''
         run: echo "Добавь секрет ROBLOX_API_KEY и переменные ROBLOX_TEST_UNIVERSE_ID, ROBLOX_TEST_PLACE_ID (см. roblox/README.md)"
+
+  publish:
+    name: Публикация в боевую игру
+    # только ветка production, только после зелёных тестов и проверок в настоящем Roblox
+    if: github.event_name == 'push' && github.ref == 'refs/heads/production'
+    needs: [tests, roblox]
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: publish-production
+      cancel-in-progress: false
+    env:
+      ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
+      ROBLOX_UNIVERSE_ID: ${{ vars.ROBLOX_PRODUCTION_UNIVERSE_ID }}
+      ROBLOX_PLACE_ID: ${{ vars.ROBLOX_PRODUCTION_PLACE_ID }}
+    steps:
+      - name: Без проверок в настоящем Roblox не публикуем
+        if: env.ROBLOX_API_KEY == ''
+        run: |
+          echo "Нет ключа ROBLOX_API_KEY: проверки в Roblox не запускались, публикация остановлена."
+          exit 1
+      - uses: actions/checkout@v4
+      - name: Инструменты Roblox
+        run: |
+          curl -sSf https://raw.githubusercontent.com/rojo-rbx/rokit/main/scripts/install.sh | bash
+          echo "$HOME/.rokit/bin" >> "$GITHUB_PATH"
+          "$HOME/.rokit/bin/rokit" authenticate github --token "${{ secrets.GITHUB_TOKEN }}"
+          "$HOME/.rokit/bin/rokit" install --no-trust-check
+      - name: Публикуем
+        run: python3 tools/publish.py

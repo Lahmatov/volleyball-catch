@@ -1,2 +1,3 @@
 node_modules/
 tests/web/screenshots/
+__pycache__/

@@ -168,6 +168,30 @@
 
 План тестов простыми словами: [`tests/TEST_PLAN.md`](../tests/TEST_PLAN.md).
 
+## Публикация без Studio
+
+Всё, что попадает в ветку **`production`**, CI сам выкладывает в боевую игру, но только когда
+зелёные все тесты и проверки в настоящем Roblox на тестовом месте. Сломанная версия к детям не попадёт.
+
+```
+tests (юнит + E2E) ─► roblox (проверки в тестовом месте) ─► publish (боевое место)
+```
+
+Один раз настроить:
+1. Создай игру в [Creator Hub](https://create.roblox.com/dashboard/creations) (или в Studio): **боевое** место
+   и отдельное **тестовое**. Через API игру можно только обновлять, создать её нужно руками один раз.
+2. На [странице ключей](https://create.roblox.com/dashboard/credentials) создай ключ Open Cloud с правами
+   `universe.places:write` и `universe.place.luau-execution-session:write` для обоих мест.
+3. В GitHub → Settings → Secrets and variables → Actions:
+   - секрет `ROBLOX_API_KEY`;
+   - переменные `ROBLOX_TEST_UNIVERSE_ID`, `ROBLOX_TEST_PLACE_ID`, `ROBLOX_PRODUCTION_UNIVERSE_ID`, `ROBLOX_PRODUCTION_PLACE_ID`.
+4. По желанию: GitHub → Settings → Environments → `production` → Required reviewers. Тогда перед каждой
+   публикацией GitHub спросит тебя «выкладываем?».
+5. На сайте Roblox один раз: сделать игру публичной, пройти анкету возрастного рейтинга, задать иконку и описание.
+
+Выложить: `git push origin <ветка>:production` (или pull request в `production`).
+Вручную с компьютера: `ROBLOX_API_KEY=… ROBLOX_UNIVERSE_ID=… ROBLOX_PLACE_ID=… npm run publish`.
+
 ## Экран и сохранение
 
 - **Экран** сделан на [Vide](https://github.com/centau/vide): кнопки пружинят, окна выезжают с отскоком,
@@ -200,6 +224,7 @@ src/server/Looks.lua           костюмы, питомцы, превраще�
 src/server/Progress.lua        монетки, магазин, подарки, колесо, коды, значки
 src/server/Data.lua            сохранение (ProfileStore)
 src/server/AntiCheat.lua       защита от читов
+../tools/publish.py            публикация в Roblox (Open Cloud)
 src/server/Net.lua             связь сервера и экрана
 src/client/DinoClient.client.lua  связка с Roblox: TopbarPlus, музыка, звуки, Динопарк, лёд
 src/client/UI/App.luau         экран на Vide: табло, окна, вылупление, колесо, кнопки динозавра
