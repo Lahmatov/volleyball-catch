@@ -1,0 +1,16 @@
+{
+  "name": "DinoEggCatch",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {
+      "DinoEggCatch": {
+        "$path": "src/DinoEggCatch.server.lua"
+      }
+    },
+    "Players": {
+      "$properties": {
+        "CharacterAutoLoads": true
+      }
+    }
+  }
+}
