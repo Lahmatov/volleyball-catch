@@ -64,6 +64,7 @@ function Graphics.setup()
 		terrain:SetMaterialColor(Enum.Material.Grass, Color3.fromRGB(106, 190, 70))
 		terrain:SetMaterialColor(Enum.Material.LeafyGrass, Color3.fromRGB(70, 140, 50))
 		terrain:SetMaterialColor(Enum.Material.Snow, Color3.fromRGB(240, 248, 255))
+		terrain:SetMaterialColor(Enum.Material.Glacier, Color3.fromRGB(235, 245, 255))
 		terrain:SetMaterialColor(Enum.Material.Ice, Color3.fromRGB(170, 215, 245))
 		terrain:SetMaterialColor(Enum.Material.Basalt, Color3.fromRGB(70, 60, 58))
 		terrain:SetMaterialColor(Enum.Material.Sand, Color3.fromRGB(235, 215, 160))
@@ -124,12 +125,12 @@ function Graphics.buildWorld(folder: Instance)
 		local r = math.random(90, 140)
 		local c = Vector3.new(math.cos(a) * d, -r * 0.3, math.sin(a) * d)
 		hill(c, r, Enum.Material.Rock)
-		hill(c + Vector3.new(0, r * 0.62, 0), r * 0.42, Enum.Material.Snow)
+		hill(c + Vector3.new(0, r * 0.62, 0), r * 0.42, Enum.Material.Glacier) -- не Snow: снег на «Льду» заменяется
 	end
 	-- дымящийся вулкан вдали (на севере)
 	local vz = -330
 	for i = 0, 11 do
-		t:FillCylinder(CFrame.new(0, i * 7 + 3.5, vz), 7, 95 - i * 7.2, i < 9 and Enum.Material.Rock or Enum.Material.Basalt)
+		t:FillCylinder(CFrame.new(0, i * 7 + 3.5, vz), 7, 95 - i * 7.2, i < 9 and Enum.Material.Rock or Enum.Material.Slate) -- не Basalt: это земля «Вулкана»
 	end
 	t:FillCylinder(CFrame.new(0, 84, vz), 4, 14, Enum.Material.CrackedLava)
 	for i = 0, 5 do

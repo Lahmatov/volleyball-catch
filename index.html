@@ -16,6 +16,7 @@
     color-scheme: light;
   }
   html, body { height: 100%; }
+  [hidden] { display: none !important; } /* иначе .overlay { display: grid } не даёт спрятать экраны */
   body {
     background: var(--grass-dark); color: var(--ink); font-family: var(--body);
     display: flex; flex-direction: column; overflow: hidden; touch-action: none; user-select: none;
