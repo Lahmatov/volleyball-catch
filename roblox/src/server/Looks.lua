@@ -170,7 +170,7 @@ function Looks.updatePets(dt: number, now: number)
 			end
 			local hop = moving and math.abs(math.sin(now * 12)) * 0.8 or 0
 			local body = pet.pos + Vector3.new(0, pet.height + hop, 0)
-			pet.model:PivotTo(CFrame.lookAt(body, body + pet.face))
+			Models.moveRig(pet.model, CFrame.lookAt(body, body + pet.face))
 			if pet.kind == "rainbow" then
 				local col = Color3.fromHSV((now * 0.3) % 1, 0.8, 1)
 				for _, p in ipairs(pet.colorParts) do
@@ -206,7 +206,7 @@ function Looks.morphDino(character: Model, kind: string)
 	local look = root.CFrame.LookVector
 	local body = Vector3.new(root.Position.X, feet + height, root.Position.Z)
 	model:PivotTo(CFrame.lookAt(body, body + Vector3.new(look.X, 0, look.Z)))
-	Models.weldTo(model, root)
+	Models.attachRig(model, root)
 	model.Parent = character
 end
 

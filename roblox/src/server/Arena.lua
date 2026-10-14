@@ -1,41 +1,36 @@
--- Строит поле на каждый тайм: 4 карты, круги, динозавры, яйца, кусты.
-local Lighting = game:GetService("Lighting")
+-- Строит поле на каждый тайм: 4 карты, круги из камней, гнёзда, флажки, динозавры, яйца, кусты и украшения.
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage:WaitForChild("DinoShared"):WaitForChild("Config"))
 local Models = require(script.Parent.Models)
+local Graphics = require(script.Parent.Graphics)
 
 local Arena = {}
 
 local R, ZONE, G = Config.CIRCLE_RADIUS, Config.ZONE_RADIUS, Config.GROUND_Y
 local FX, FZ = Config.FIELD_X, Config.FIELD_Z
-local WHITE = Color3.fromRGB(247, 243, 227)
 
 local THEMES = {
 	field = {
-		floor = Color3.fromRGB(79, 154, 60), material = Enum.Material.Grass,
-		disc = Color3.fromRGB(63, 132, 48), ring = WHITE, bush = Color3.fromRGB(55, 135, 45),
-		wall = Enum.Material.WoodPlanks, wallColor = WHITE,
-		light = { ClockTime = 14, OutdoorAmbient = Color3.fromRGB(128, 128, 128), FogEnd = 100000, FogColor = Color3.fromRGB(192, 192, 192) },
+		floor = Color3.fromRGB(106, 190, 70), material = Enum.Material.Grass,
+		straw = Color3.fromRGB(225, 200, 130), stone = Color3.fromRGB(235, 232, 220), bush = Color3.fromRGB(55, 140, 45),
+		fence = Color3.fromRGB(250, 248, 240), flags = { Color3.fromRGB(255, 95, 95), Color3.fromRGB(80, 170, 255), Color3.fromRGB(255, 210, 60) },
 	},
 	jungle = {
-		floor = Color3.fromRGB(58, 118, 44), material = Enum.Material.LeafyGrass,
-		disc = Color3.fromRGB(80, 140, 60), ring = Color3.fromRGB(250, 235, 170), bush = Color3.fromRGB(40, 110, 40),
-		wall = Enum.Material.Wood, wallColor = Color3.fromRGB(110, 75, 45),
-		light = { ClockTime = 13, OutdoorAmbient = Color3.fromRGB(110, 140, 110), FogEnd = 700, FogColor = Color3.fromRGB(150, 190, 140) },
+		floor = Color3.fromRGB(70, 140, 50), material = Enum.Material.LeafyGrass,
+		straw = Color3.fromRGB(150, 120, 70), stone = Color3.fromRGB(150, 160, 130), bush = Color3.fromRGB(40, 115, 40),
+		fence = Color3.fromRGB(120, 85, 50), flags = { Color3.fromRGB(255, 170, 40), Color3.fromRGB(240, 70, 120), Color3.fromRGB(80, 220, 160) },
 	},
 	volcano = {
-		floor = Color3.fromRGB(75, 62, 56), material = Enum.Material.Basalt,
-		disc = Color3.fromRGB(100, 80, 68), ring = Color3.fromRGB(255, 200, 120), bush = Color3.fromRGB(95, 110, 50),
-		wall = Enum.Material.Slate, wallColor = Color3.fromRGB(60, 50, 45),
-		light = { ClockTime = 17.8, OutdoorAmbient = Color3.fromRGB(160, 100, 80), FogEnd = 600, FogColor = Color3.fromRGB(110, 60, 45) },
+		floor = Color3.fromRGB(70, 60, 58), material = Enum.Material.Basalt,
+		straw = Color3.fromRGB(110, 80, 60), stone = Color3.fromRGB(60, 55, 55), bush = Color3.fromRGB(95, 110, 50),
+		fence = Color3.fromRGB(60, 50, 45), flags = { Color3.fromRGB(255, 120, 40), Color3.fromRGB(255, 200, 60), Color3.fromRGB(230, 60, 40) },
 	},
 	ice = {
-		floor = Color3.fromRGB(205, 232, 245), material = Enum.Material.Ice,
-		disc = Color3.fromRGB(175, 212, 236), ring = Color3.fromRGB(60, 120, 200), bush = Color3.fromRGB(225, 240, 250),
-		wall = Enum.Material.Ice, wallColor = Color3.fromRGB(170, 210, 240),
-		light = { ClockTime = 12, OutdoorAmbient = Color3.fromRGB(170, 190, 220), FogEnd = 600, FogColor = Color3.fromRGB(225, 238, 250) },
+		floor = Color3.fromRGB(170, 215, 245), material = Enum.Material.Ice,
+		straw = Color3.fromRGB(235, 245, 255), stone = Color3.fromRGB(80, 140, 210), bush = Color3.fromRGB(220, 238, 250),
+		fence = Color3.fromRGB(170, 210, 240), flags = { Color3.fromRGB(80, 170, 255), Color3.fromRGB(255, 255, 255), Color3.fromRGB(190, 120, 255) },
 	},
 }
 
@@ -69,38 +64,52 @@ function Arena.freePos(margin: number?): Vector3
 	return Vector3.new(math.random(-120, 120), G, 75)
 end
 
+-- деревянный забор вокруг поля и невидимая высокая стена, чтобы никто не убежал
+local function buildFence(folder: Instance, color: Color3)
+	local function side(from: Vector3, to: Vector3)
+		local len = (to - from).Magnitude
+		local dir = (to - from).Unit
+		local cf = CFrame.lookAt((from + to) / 2, to)
+		for _, y in ipairs({ 1.2, 2.6 }) do
+			local rail = Models.part(folder, Vector3.new(0.4, 0.5, len), cf * CFrame.new(0, y, 0), color, Enum.Material.WoodPlanks)
+			rail.CanCollide = true
+		end
+		local n = math.floor(len / 2.5)
+		for i = 0, n do
+			local p = from + dir * (i * len / n)
+			local tall = i % 4 == 0
+			local h = tall and 4 or 3.4
+			local mid = p + Vector3.new(0, h / 2, 0)
+			Models.part(folder, Vector3.new(tall and 0.8 or 0.6, h, tall and 0.8 or 0.35), CFrame.lookAt(mid, mid + dir), color, Enum.Material.WoodPlanks)
+			if tall then
+				Models.ball(folder, Vector3.new(0.8, 0.8, 0.8), CFrame.new(p + Vector3.new(0, 4.2, 0)), color)
+			end
+		end
+		local wall = Models.part(folder, Vector3.new(1, 60, len), cf * CFrame.new(0, 30, 0), color)
+		wall.Transparency = 1
+		wall.CanCollide = true
+	end
+	local x, z = FX / 2, FZ / 2
+	side(Vector3.new(-x, G, -z), Vector3.new(x, G, -z))
+	side(Vector3.new(x, G, -z), Vector3.new(x, G, z))
+	side(Vector3.new(x, G, z), Vector3.new(-x, G, z))
+	side(Vector3.new(-x, G, z), Vector3.new(-x, G, -z))
+end
+
 -- ---------- поле на один тайм ----------
 
 local current: Folder? = nil
-
-local function applyLighting(theme, event: string)
-	for k, v in pairs(theme.light) do
-		(Lighting :: any)[k] = v
-	end
-	Lighting.Ambient = Color3.fromRGB(90, 90, 90)
-	if event == "halloween" then
-		Lighting.ClockTime = 18.2
-		Lighting.OutdoorAmbient = Color3.fromRGB(150, 110, 150)
-	end
-end
 
 function Arena.buildRound(themeId: string, event: string)
 	local theme = THEMES[themeId] or THEMES.field
 	local folder = Instance.new("Folder")
 	folder.Name = "DinoArena"
 
-	local floor = Models.part(folder, Vector3.new(FX, 1, FZ), CFrame.new(0, G - 0.5, 0), theme.floor, theme.material)
-	floor.CanCollide = true
-	floor.Name = "Field"
-	for _, w in ipairs({
-		{ Vector3.new(FX, 3, 2), Vector3.new(0, 1.5, FZ / 2) },
-		{ Vector3.new(FX, 3, 2), Vector3.new(0, 1.5, -FZ / 2) },
-		{ Vector3.new(2, 3, FZ), Vector3.new(FX / 2, 1.5, 0) },
-		{ Vector3.new(2, 3, FZ), Vector3.new(-FX / 2, 1.5, 0) },
-	}) do
-		local wall = Models.part(folder, w[1], CFrame.new(w[2]), theme.wallColor, theme.wall)
-		wall.CanCollide = true
+	if not Graphics.hasTerrain then
+		local floor = Models.part(folder, Vector3.new(FX, 1, FZ), CFrame.new(0, G - 0.5, 0), theme.floor, theme.material)
+		floor.CanCollide = true
 	end
+	buildFence(folder, theme.fence)
 
 	local circles = {}
 	local rainbowCircle = math.random(1, 10)
@@ -108,21 +117,28 @@ function Arena.buildRound(themeId: string, event: string)
 		local kind = Config.DINO_ORDER[(i - 1) % 4 + 1]
 		local def = Config.DINOS[kind]
 
-		local disc = Models.cylinder(folder, 0.1, R * 2, CFrame.new(center + Vector3.new(0, 0.06, 0)), theme.disc)
-		disc.Name = "Circle"
+		-- соломенное гнездо внутри круга
+		local straw = Models.cylinder(folder, 0.12, R * 2 - 1, CFrame.new(center + Vector3.new(0, 0.06, 0)), theme.straw, Enum.Material.Sand)
+		straw.Name = "Circle"
+		for t = 1, 28 do
+			local a = t / 28 * math.pi * 2
+			local r = R * 0.6 + (t % 3 - 1) * 0.9
+			Models.part(folder, Vector3.new(0.25, 0.25, 2.6), CFrame.new(center + Vector3.new(math.cos(a) * r, 0.3 + (t % 2) * 0.15, math.sin(a) * r)) * CFrame.Angles(0, -a + math.rad(math.random(60, 120)), math.rad(math.random(-15, 15))), theme.straw:Lerp(Color3.fromRGB(120, 80, 40), 0.35 + (t % 3) * 0.1), Enum.Material.Wood)
+		end
+
+		-- круг из камушков (может «сломаться»)
 		local ring = {}
 		local N = 24
-		local segLen = 2 * math.pi * R / N * 0.9
 		for s = 0, N - 1 do
 			local a = s / N * math.pi * 2
-			local pos = center + Vector3.new(math.cos(a) * R, 0.15, math.sin(a) * R)
+			local pos = center + Vector3.new(math.cos(a) * R, 0.45, math.sin(a) * R)
 			local tangent = Vector3.new(-math.sin(a), 0, math.cos(a))
-			table.insert(ring, Models.part(folder, Vector3.new(0.8, 0.3, segLen), CFrame.lookAt(pos, pos + tangent), theme.ring))
+			table.insert(ring, Models.ball(folder, Vector3.new(2.4, 1.1, 3.3), CFrame.lookAt(pos, pos + tangent), theme.stone, Enum.Material.Slate))
 		end
-		for s = 0, 15 do
-			local a = s / 16 * math.pi * 2
-			local dot = Models.part(folder, Vector3.new(0.6, 0.2, 0.6), CFrame.new(center + Vector3.new(math.cos(a) * ZONE, 0.1, math.sin(a) * ZONE)), theme.ring)
-			dot.Transparency = 0.5
+		-- флажки на границе, за которую надо убежать
+		for s = 0, 11 do
+			local a = s / 12 * math.pi * 2
+			Models.flag(folder, center + Vector3.new(math.cos(a) * ZONE, 0, math.sin(a) * ZONE), theme.flags[s % 3 + 1])
 		end
 
 		local circle = {
@@ -131,7 +147,7 @@ function Arena.buildRound(themeId: string, event: string)
 			kind = kind,
 			def = def,
 			ring = ring,
-			ringColor = theme.ring,
+			ringColor = theme.stone,
 			eggs = {},
 			occupant = nil,
 			crackUntil = 0,
@@ -146,7 +162,7 @@ function Arena.buildRound(themeId: string, event: string)
 
 		for e = 0, 4 do
 			local a = -math.pi / 2 + e * (math.pi * 2 / 5)
-			local home = CFrame.new(center + Vector3.new(math.cos(a) * R * 0.6, 0.95, math.sin(a) * R * 0.6))
+			local home = CFrame.new(center + Vector3.new(math.cos(a) * R * 0.6, 1.1, math.sin(a) * R * 0.6))
 			local eggKind = kind == "gold" and "gold" or "normal"
 			if i == rainbowCircle and e == 0 then
 				eggKind = "rainbow"
@@ -172,6 +188,7 @@ function Arena.buildRound(themeId: string, event: string)
 		model:PivotTo(CFrame.new(center + Vector3.new(0, height, 0)))
 		model.Parent = folder
 		circle.dino = model
+		circle.root = model.PrimaryPart
 		circle.colorParts = colorParts
 		circle.bubble = Models.bubble(colorParts[2], 5)
 		circle.nextChat = os.clock() + math.random(2, 12)
@@ -179,7 +196,7 @@ function Arena.buildRound(themeId: string, event: string)
 		circle.height = height
 		circle.allParts = {}
 		for _, d in ipairs(model:GetDescendants()) do
-			if d:IsA("BasePart") then
+			if d:IsA("BasePart") and d.Name ~= "Eyelid" then
 				table.insert(circle.allParts, d)
 			end
 		end
@@ -196,13 +213,23 @@ function Arena.buildRound(themeId: string, event: string)
 		table.insert(bushes, c.bushPos)
 	end
 
+	-- украшения своей карты
 	local lava = {}
 	if themeId == "field" then
-		for _ = 1, 50 do
+		for _ = 1, 45 do
 			Models.flower(folder, Arena.freePos(1))
 		end
-		for _ = 1, 6 do
+		for _ = 1, 7 do
 			Models.tree(folder, Arena.freePos(6), false)
+		end
+		for _ = 1, 6 do
+			Models.rock(folder, Arena.freePos(3), math.random(2, 4))
+		end
+		for _ = 1, 3 do
+			Models.log(folder, Arena.freePos(4))
+		end
+		for _ = 1, 10 do
+			Models.mushroom(folder, Arena.freePos(1))
 		end
 	elseif themeId == "jungle" then
 		for _ = 1, 14 do
@@ -211,21 +238,45 @@ function Arena.buildRound(themeId: string, event: string)
 		for _ = 1, 6 do
 			Models.tree(folder, Arena.freePos(6), false)
 		end
+		for _ = 1, 20 do
+			Models.fern(folder, Arena.freePos(2))
+		end
 		for _ = 1, 6 do
 			local p = Arena.freePos(4)
 			Models.bush(folder, p, theme.bush)
 			table.insert(bushes, p)
 		end
+		for _ = 1, 4 do
+			Models.log(folder, Arena.freePos(4))
+		end
 	elseif themeId == "volcano" then
-		Models.volcano(folder, Vector3.new(0, G, -FZ / 2 - 45))
 		for _ = 1, 6 do
 			local p = Arena.freePos(6)
 			Models.lava(folder, p, 4)
+			Graphics.lavaPatch(p, 7)
 			table.insert(lava, { pos = p, radius = 4 })
+		end
+		for _ = 1, 12 do
+			Models.rock(folder, Arena.freePos(3), math.random(2, 5))
+		end
+		for _ = 1, 5 do
+			local vent = Models.part(folder, Vector3.new(1, 1, 1), CFrame.new(Arena.freePos(3)), Color3.new(0, 0, 0))
+			vent.Transparency = 1
+			local smoke = Instance.new("Smoke")
+			smoke.Size = 3
+			smoke.RiseVelocity = 6
+			smoke.Opacity = 0.15
+			smoke.Parent = vent
 		end
 	elseif themeId == "ice" then
 		for _ = 1, 8 do
 			Models.snowman(folder, Arena.freePos(4))
+		end
+		for _ = 1, 10 do
+			Models.pine(folder, Arena.freePos(6), true)
+		end
+		for _ = 1, 8 do
+			Models.crystal(folder, Arena.freePos(3))
 		end
 	end
 
@@ -234,23 +285,13 @@ function Arena.buildRound(themeId: string, event: string)
 			Models.pumpkin(folder, Arena.freePos(3))
 		end
 	elseif event == "newyear" then
-		local sky = Models.part(folder, Vector3.new(FX, 1, FZ), CFrame.new(0, 70, 0), WHITE)
-		sky.Transparency = 1
-		local snow = Instance.new("ParticleEmitter")
-		snow.EmissionDirection = Enum.NormalId.Bottom
-		snow.Rate = 150
-		snow.Lifetime = NumberRange.new(10)
-		snow.Speed = NumberRange.new(6, 9)
-		snow.Size = NumberSequence.new(0.4)
-		snow.Color = ColorSequence.new(Color3.new(1, 1, 1))
-		snow.SpreadAngle = Vector2.new(10, 10)
-		snow.Parent = sky
 		for _ = 1, 4 do
 			Models.snowman(folder, Arena.freePos(4))
 		end
+		for _ = 1, 4 do
+			Models.pine(folder, Arena.freePos(6), true)
+		end
 	end
-
-	applyLighting(theme, event)
 
 	-- новое поле ставим раньше, чем убираем старое, чтобы никто не провалился
 	folder.Parent = Workspace

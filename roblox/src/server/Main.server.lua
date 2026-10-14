@@ -17,6 +17,7 @@ local Arena = require(script.Parent.Arena)
 local Looks = require(script.Parent.Looks)
 local Progress = require(script.Parent.Progress)
 local Lobby = require(script.Parent.Lobby)
+local Graphics = require(script.Parent.Graphics)
 
 local R, ZONE, G = Config.CIRCLE_RADIUS, Config.ZONE_RADIUS, Config.GROUND_Y
 local FX, FZ = Config.FIELD_X, Config.FIELD_Z
@@ -24,6 +25,13 @@ local FX, FZ = Config.FIELD_X, Config.FIELD_Z
 local event = Config.currentEvent()
 Progress.event = event
 Net.set("Event", event)
+
+local worldFolder = Instance.new("Folder")
+worldFolder.Name = "DinoWorld"
+worldFolder.Parent = workspace
+Graphics.setup()
+Graphics.buildWorld(worldFolder)
+Graphics.applyTheme(Config.THEMES[1].id, event)
 
 local setScale: (Player, number) -> ()
 local lobby = Lobby.build()
@@ -409,6 +417,7 @@ local function spawnBoss(now: number)
 	})
 	local pos = Vector3.new(0, G, -FZ / 2 + 12)
 	model:PivotTo(CFrame.new(pos + Vector3.new(0, height, 0)))
+	model:SetAttribute("Chasing", true)
 	model.Parent = arena.folder
 	boss = {
 		model = model,
@@ -497,7 +506,7 @@ RunService.Heartbeat:Connect(function(dt)
 
 			if pos.Y < -40 then
 				teleport(player, (roundActive and not Lobby.contains(pos)) and lobby.fieldCFrame or lobby.spawnCFrame)
-			elseif pos.X < -FX / 2 - 10 and pos.Y < -6 then
+			elseif pos.X < -FX / 2 - 10 and pos.Y < -3 then
 				teleport(player, lobby.obbyStart) -- упал в воду на обби
 			end
 			if flatDist(pos, lobby.padPos) < 3 and pos.Y < G + 6 and s.cagedUntil <= now then
@@ -683,7 +692,10 @@ RunService.Heartbeat:Connect(function(dt)
 		end
 		local bob = moving and math.abs(math.sin(now * 12)) * 0.5 or 0
 		local body = c.dinoPos + Vector3.new(0, c.height + bob, 0)
-		c.dino:PivotTo(CFrame.lookAt(body, body + c.dinoFace))
+		Models.moveRig(c.dino, CFrame.lookAt(body, body + c.dinoFace))
+		if c.dino:GetAttribute("Chasing") ~= chasing then
+			c.dino:SetAttribute("Chasing", chasing)
+		end
 
 		-- динозавры болтают
 		if now >= c.nextChat then
@@ -747,7 +759,7 @@ RunService.Heartbeat:Connect(function(dt)
 				boss.face = delta.Unit
 			end
 			local body = boss.pos + Vector3.new(0, boss.height + (moving and math.abs(math.sin(now * 6)) or 0), 0)
-			boss.model:PivotTo(CFrame.lookAt(body, body + boss.face))
+			Models.moveRig(boss.model, CFrame.lookAt(body, body + boss.face))
 			if now >= boss.nextChat then
 				boss.nextChat = now + 4
 				local list = Config.DINO_PHRASES.boss
@@ -894,10 +906,10 @@ lobby.statuePrompt.Triggered:Connect(function(player)
 		local look = CFrame.lookAt(base, base + Vector3.new(0.4, 0, 1)).Rotation
 		for i = 1, 10 do
 			local y = math.sin(i / 10 * math.pi) * 3
-			st0.model:PivotTo(CFrame.new(base + Vector3.new(0, y, 0)) * look)
+			Models.moveRig(st0.model, CFrame.new(base + Vector3.new(0, y, 0)) * look)
 			task.wait(0.04)
 		end
-		st0.model:PivotTo(CFrame.new(base) * look)
+		Models.moveRig(st0.model, CFrame.new(base) * look)
 	end)
 	task.delay(3, function()
 		if my == statueToken then
@@ -1081,6 +1093,7 @@ task.spawn(function()
 		end
 
 		cleanupRound()
+		Graphics.applyTheme(theme.id, event)
 		arena = Arena.buildRound(theme.id, event)
 		Net.set("Map", theme.icon .. " " .. theme.name)
 		Net.set("Theme", theme.id)

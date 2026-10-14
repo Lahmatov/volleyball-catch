@@ -22,6 +22,17 @@
     "Workspace": {
       "$properties": {
         "Gravity": 196.2
+      },
+      "Terrain": {
+        "$className": "Terrain",
+        "$properties": {
+          "Decoration": true
+        }
+      }
+    },
+    "Lighting": {
+      "$properties": {
+        "Technology": "Future"
       }
     }
   }

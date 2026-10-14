@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage:WaitForChild("DinoShared"):WaitForChild("Config"))
 local Models = require(script.Parent.Models)
+local Graphics = require(script.Parent.Graphics)
 
 local Lobby = {}
 
@@ -44,7 +45,33 @@ function Lobby.build()
 	folder.Name = "DinoPark"
 
 	-- пол и забор
-	solid(Models.part(folder, Vector3.new(LX, 1, LZ), CFrame.new(at(0, -0.5, 0)), Color3.fromRGB(125, 205, 95), Enum.Material.Grass))
+	if not Graphics.hasTerrain then
+		solid(Models.part(folder, Vector3.new(LX, 1, LZ), CFrame.new(at(0, -0.5, 0)), Color3.fromRGB(125, 205, 95), Enum.Material.Grass))
+	end
+	-- дорожки из плитки
+	for i = -6, 6 do
+		Models.part(folder, Vector3.new(4.4, 0.15, 3.6), CFrame.new(at(0, 0.07, i * 4 + 6)), i % 2 == 0 and Color3.fromRGB(240, 225, 200) or Color3.fromRGB(225, 205, 175), Enum.Material.Pavement)
+	end
+	for i = -14, 14 do
+		Models.part(folder, Vector3.new(3.6, 0.15, 4.4), CFrame.new(at(i * 4, 0.07, 6)), i % 2 == 0 and Color3.fromRGB(240, 225, 200) or Color3.fromRGB(225, 205, 175), Enum.Material.Pavement)
+	end
+	-- фонари, скамейки, сладкая вата, деревья, клумбы
+	for _, p in ipairs({ { -8, -10 }, { 8, -10 }, { -8, 22 }, { 8, 22 }, { -30, 10 }, { 30, 10 }, { -55, 10 }, { 55, 10 } }) do
+		Models.lamp(folder, at(p[1], 0, p[2]))
+	end
+	for _, b in ipairs({ { -20, 10, 0 }, { 20, 10, 180 }, { -4, -40, 0 }, { 30, 40, 90 } }) do
+		Models.bench(folder, CFrame.new(at(b[1], 0, b[2] - 3)) * CFrame.Angles(0, math.rad(b[3]), 0))
+	end
+	Models.candyCart(folder, CFrame.new(at(-6, 0, 40)) * CFrame.Angles(0, math.rad(200), 0))
+	for _, p in ipairs({ { -58, -42 }, { 58, -42 }, { -58, 40 }, { 58, 40 }, { -30, -44 }, { 22, 44 }, { 60, -10 } }) do
+		Models.tree(folder, at(p[1], 0, p[2]), false)
+	end
+	for _ = 1, 40 do
+		local x, z = math.random(-60, 60), math.random(-45, 45)
+		if math.abs(x) > 8 and math.abs(z - 6) > 4 then
+			Models.flower(folder, at(x, 0, z))
+		end
+	end
 	for i = 1, 14 do
 		local spot = Models.cylinder(folder, 0.1, math.random(6, 12), CFrame.new(at(math.random(-55, 55), 0.06, math.random(-40, 40))), bright(i))
 		spot.Transparency = 0.55
@@ -256,8 +283,10 @@ function Lobby.build()
 	-- обби (за западной стеной поля, над голубой «водой»)
 	local FX, FZ = Config.FIELD_X, Config.FIELD_Z
 	local ox = -FX / 2 - 45
-	local water = Models.part(folder, Vector3.new(70, 1, FZ + 40), CFrame.new(ox, -12, 0), Color3.fromRGB(70, 180, 230), Enum.Material.Neon)
-	water.Transparency = 0.3
+	if not Graphics.hasTerrain then
+		local water = Models.part(folder, Vector3.new(70, 1, FZ + 40), CFrame.new(ox, -12, 0), Color3.fromRGB(70, 180, 230), Enum.Material.Neon)
+		water.Transparency = 0.3
+	end
 	local start = solid(Models.part(folder, Vector3.new(12, 1, 12), CFrame.new(ox, 2, -75), Color3.fromRGB(150, 90, 230)))
 	Models.label(start, "Прыгай по островкам!", 6, Color3.fromRGB(220, 190, 255), 80)
 	local last = Vector3.new(ox, 2, -75)
